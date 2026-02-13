@@ -1,0 +1,32 @@
+[versions]
+springBoot = "4.0.2"
+flyway = "12.0.0"
+postgresql = "42.7.9"
+testcontainers = "1.21.4"
+lombok = "1.18.32"
+mapstruct = "1.6.3"
+lombokMapstructBinding = "0.2.0"
+tika = "3.2.2"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
+
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+
+mapstruct = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct"}
+mapstruct-proc = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct"}
+lombok-mapstruct-binding = { module = "org.projectlombok:lombok-mapstruct-binding", version.ref = "lombokMapstructBinding" }
+
+tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
+
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+flyway = { id = "org.flywaydb.flyway", version.ref = "flyway" }

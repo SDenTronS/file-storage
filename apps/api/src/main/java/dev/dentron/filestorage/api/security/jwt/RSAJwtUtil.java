@@ -1,0 +1,64 @@
+package dev.dentron.filestorage.api.security.jwt;
+
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.JWTVerifier;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
+
+@Slf4j
+public class RSAJwtUtil implements JwtAuthUtil{
+    public final Algorithm algorithm;
+    public final JWTVerifier verifier;
+
+    public RSAJwtUtil(String publicKey) {
+        this.algorithm = Algorithm.RSA256(retrieveRsaPublicKey(publicKey));
+        this.verifier = JWT.require(algorithm).build();
+    }
+
+    private static RSAPublicKey retrieveRsaPublicKey(String publicKey) {
+        String safe = publicKey
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s+", "");
+
+        try {
+            byte[] der = Base64.getDecoder().decode(safe);
+            KeyFactory factory = KeyFactory.getInstance("RSA");
+            var key = factory.generatePublic(new X509EncodedKeySpec(der));
+
+            if (!(key instanceof RSAPublicKey rsaKey)) {
+                log.error("RSA Public Key is not a RSAPublicKey");
+                return null;
+            }
+
+            return rsaKey;
+
+        } catch (NoSuchAlgorithmException e) {
+            log.error("Unresolved algorithm: {}", e.getMessage());
+            return null;
+        } catch (InvalidKeySpecException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public boolean validate(String token) {
+        try {
+            verifier.verify(token);
+            return true;
+        } catch (JWTVerificationException e) {
+            return false;
+        }
+    }
+}
