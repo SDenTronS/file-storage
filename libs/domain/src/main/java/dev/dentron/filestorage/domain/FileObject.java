@@ -5,9 +5,12 @@ import java.util.Objects;
 import java.util.UUID;
 
 import dev.dentron.filestorage.domain.exception.FileNotAccessibleException;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class FileObject {
     private UUID id;
     private String bucket;
@@ -38,6 +41,42 @@ public class FileObject {
         this.originalName = originalName;
         this.bucket = bucket;
         this.status = Status.UPLOADING;
+    }
+
+    public static FileObject restore(
+            UUID id,
+            String bucket,
+            String owner,
+            String objectKey,
+            String originalName,
+            Long size,
+            String sha256,
+            String etag,
+            String contentType,
+            Status status,
+            Instant createdAt,
+            Instant deletedAt
+    ) {
+        Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(bucket, "bucket");
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(objectKey, "objectKey");
+        Objects.requireNonNull(status, "status");
+
+        return new FileObject(
+                id,
+                bucket,
+                owner,
+                objectKey,
+                originalName,
+                size,
+                sha256,
+                etag,
+                contentType,
+                status,
+                createdAt,
+                deletedAt
+        );
     }
 
     public boolean isUploading() {

@@ -5,9 +5,12 @@ import java.util.Objects;
 import java.util.UUID;
 
 import dev.dentron.filestorage.domain.exception.UploadSessionException;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 @Getter
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class UploadSession {
     private UUID id;
     private String multipartUploadId;
@@ -33,6 +36,19 @@ public class UploadSession {
         this.expiresAt = expiresAt;
         this.expectedContentType = expectedContentType;
         this.status = Status.CREATED;
+    }
+
+
+    public static UploadSession restore(
+            UUID id,
+            String multipartUploadId,
+            UUID fileId,
+            Instant expiresAt,
+            Long expectedSize,
+            String expectedContentType,
+            Status status
+    ) {
+        return new UploadSession(id, multipartUploadId, fileId, expiresAt, expectedSize, expectedContentType, status);
     }
 
     public void ensureAvailable(Instant now) {

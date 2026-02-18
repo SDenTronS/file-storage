@@ -1,15 +1,17 @@
 package dev.dentron.filestorage.domain;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 import dev.dentron.filestorage.domain.exception.DownloadTokenAlreadyUsedException;
 import dev.dentron.filestorage.domain.exception.DownloadTokenExpiredException;
-import lombok.Data;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.Setter;
 
 @Getter
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class DownloadToken {
     private Long id;
     private String tokenHash;
@@ -29,6 +31,38 @@ public class DownloadToken {
         this.issuedByService = issuedByService;
         this.audienceService = audienceService;
         this.expiresAt = expiresAt;
+    }
+
+    public static DownloadToken restore(
+            Long id,
+            String tokenHash,
+            UUID fileId,
+            String issuedByService,
+            String audienceService,
+            Instant expiresAt,
+            Instant redeemedAt,
+            String redeemedByService,
+            Instant createdAt,
+            Instant revokedAt
+    ) {
+        Objects.requireNonNull(tokenHash, "tokenHash");
+        Objects.requireNonNull(fileId, "fileId");
+        Objects.requireNonNull(issuedByService, "issuedByService");
+        Objects.requireNonNull(audienceService, "audienceService");
+        Objects.requireNonNull(expiresAt, "expiresAt");
+
+        return new DownloadToken(
+                id,
+                tokenHash,
+                fileId,
+                issuedByService,
+                audienceService,
+                expiresAt,
+                redeemedAt,
+                redeemedByService,
+                createdAt,
+                revokedAt
+        );
     }
 
     public boolean isUsed() {

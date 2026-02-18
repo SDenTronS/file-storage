@@ -4,7 +4,7 @@ import org.mapstruct.*;
 
 @MapperConfig(
         componentModel = MappingConstants.ComponentModel.SPRING,
-        unmappedTargetPolicy = ReportingPolicy.WARN,
+        unmappedTargetPolicy = ReportingPolicy.ERROR,
         unmappedSourcePolicy = ReportingPolicy.WARN,
         nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS
 )
