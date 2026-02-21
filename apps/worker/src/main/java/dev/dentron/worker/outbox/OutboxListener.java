@@ -53,7 +53,7 @@ public class OutboxListener {
     private final ObjectMapper mapper;
 
     @KafkaListener(topics = "file-storage", containerFactory = "outbox-container-factory")
-    public void listen(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) throws Exception {
+    public void listen(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) {
         OutboxEventType type = message.eventType();
         EventHandler handler = EVENT_HANDLERS.get(type);
 
@@ -160,6 +160,6 @@ public class OutboxListener {
 
     @FunctionalInterface
     private interface EventHandler {
-        void handle(OutboxMessage message, String key) throws Exception;
+        void handle(OutboxMessage message, String key);
     }
 }

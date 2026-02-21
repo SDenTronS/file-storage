@@ -23,132 +23,6 @@ import static dev.dentron.filestorage.common.util.ExceptionUtils.unwrap;
 @Slf4j
 @RestControllerAdvice
 public class ApplicationExceptionHandler {
-//
-//    @ExceptionHandler(HttpMessageNotReadableException.class)
-//    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadable(
-//            HttpMessageNotReadableException ex,
-//            HttpServletRequest request
-//    ) {
-//        log.warn("Invalid request body for {}: {}", request.getRequestURI(), ex.getMessage());
-//
-//        String message = "Invalid request body";
-//        String exceptionMessage = ex.getMessage();
-//        if (exceptionMessage != null && exceptionMessage.startsWith("Required request body is missing")) {
-//            message = "Request body is required";
-//        }
-//
-//        ApiErrorResponse body = ApiErrorResponse.of(
-//                message,
-//                request.getRequestId()
-//        );
-//
-//        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
-//    }
-//
-//    @ExceptionHandler(MethodArgumentNotValidException.class)
-//    public ResponseEntity<ApiErrorResponse> handleMethodArgumentNotValid(
-//            MethodArgumentNotValidException ex,
-//            HttpServletRequest request
-//    ) {
-//        log.warn("Validation failed for {}: {}", request.getRequestURI(), ex.getMessage());
-//
-//        List<ApiErrorResponse.FieldError> fieldErrors = ex.getBindingResult()
-//                .getFieldErrors()
-//                .stream()
-//                .map(error -> ApiErrorResponse.FieldError.builder()
-//                        .field(error.getField())
-//                        .message(error.getDefaultMessage())
-//                        .rejectedValue(error.getRejectedValue())
-//                        .build())
-//                .toList();
-//
-//        ApiErrorResponse body = ApiErrorResponse.validationError(
-//                "Validation failed",
-//                request.getRequestId(),
-//                fieldErrors
-//        );
-//
-//        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
-//    }
-//
-//    @ExceptionHandler(ResponseStatusException.class)
-//    public ResponseEntity<ApiErrorResponse> handleResponseException(ResponseStatusException ex,
-//                                                                    HttpServletRequest request) {
-//        log.warn("Response status exception in controller", ex);
-//
-//        HttpStatusCode statusCode = ex.getStatusCode();
-//        HttpStatus status = HttpStatus.valueOf(statusCode.value());
-//
-//        String requestId = request.getRequestId();
-//
-//        ApiErrorResponse body = ApiErrorResponse.fromResponseStatusException(ex, requestId);
-//
-//        return ResponseEntity.status(status).body(body);
-//    }
-//
-//    @ExceptionHandler(EntityNotFoundException.class)
-//    public ResponseEntity<ApiErrorResponse> handleEntityNotFound(
-//            EntityNotFoundException ex,
-//            HttpServletRequest request
-//    ) {
-//        log.warn("Entity not found for {}: {}", request.getRequestURI(), ex.getMessage());
-//
-//        String message = ex.getMessage();
-//        if (message == null || message.isBlank()) {
-//            message = "Resource not found";
-//        }
-//
-//        ApiErrorResponse body = ApiErrorResponse.of(
-//                message,
-//                request.getRequestId()
-//        );
-//
-//        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
-//    }
-//
-//    @ExceptionHandler(AccessDeniedException.class)
-//    public ResponseEntity<ApiErrorResponse> handleAccessDenied(
-//            AccessDeniedException ex,
-//            HttpServletRequest request
-//    ) {
-//        log.warn("Access denied for {}: {}", request.getRequestURI(), ex.getMessage());
-//
-//        String message = ex.getMessage();
-//        if (message == null || message.isBlank()) {
-//            message = "Access denied";
-//        }
-//
-//        ApiErrorResponse body = ApiErrorResponse.of(
-//                message,
-//                request.getRequestId()
-//        );
-//
-//        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
-//    }
-//
-//    @ExceptionHandler({
-//            AuthenticationCredentialsNotFoundException.class,
-//            UserPrincipalNotFoundException.class
-//    })
-//    public ResponseEntity<ApiErrorResponse> handleAuthenticationMissing(
-//            Exception ex,
-//            HttpServletRequest request
-//    ) {
-//        log.warn("Authentication missing for {}: {}", request.getRequestURI(), ex.getMessage());
-//
-//        String message = ex.getMessage();
-//        if (message == null || message.isBlank()) {
-//            message = "Authentication required";
-//        }
-//
-//        ApiErrorResponse body = ApiErrorResponse.of(
-//                message,
-//                request.getRequestId()
-//        );
-//
-//        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
-//    }
-
     @ExceptionHandler(CompletionException.class)
     public ResponseEntity<ApiErrorResponse> handleCompletionException(
             CompletionException ex,
@@ -227,9 +101,8 @@ public class ApplicationExceptionHandler {
             };
 
             List<ApiErrorResponse.FieldError> details = new ArrayList<>();
-            details.add(fieldError("code", ex.code()));            // UPLOAD_SESSION_*
+            details.add(fieldError("code", ex.code()));
             details.add(fieldError("reason", ex.reason().name()));
-            details.add(fieldError("status", ex.status().name()));
 
             return clientError(status, "Upload session is not valid", request, cause, details);
         }
