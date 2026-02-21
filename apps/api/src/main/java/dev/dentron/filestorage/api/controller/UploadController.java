@@ -75,7 +75,7 @@ public class UploadController {
     @PostMapping("/uploads/{uploadId}")
     public ResponseEntity<?> uploadMultipart(
             @RequestParam("partNumber") @Positive int partNumber,
-            @PathVariable("uploadId") @NotBlank String uploadId,
+            @PathVariable @NotBlank String uploadId,
             @CurrentService ServiceDetails currentService
     ) {
         NamespaceContext ns = new NamespaceContext(currentService.serviceId());
