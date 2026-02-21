@@ -72,7 +72,7 @@ public class MinIOCredentials {
         boolean applyLifecycle;
 
         static Init defaultInit() {
-            return new Init(true, true, true);
+            return new Init(true, false, false);
         }
     }
 }

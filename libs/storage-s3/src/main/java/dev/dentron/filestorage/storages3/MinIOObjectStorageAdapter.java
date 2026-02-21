@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.math.BigInteger;
 import java.net.URI;
 import java.time.Duration;
 import java.time.ZoneId;
@@ -36,7 +37,6 @@ public class MinIOObjectStorageAdapter implements ObjectStoragePort {
 
     @Override
     public CompletableFuture<Boolean> exists(String bucket, String objectKey) {
-
         try {
             return minioClient.statObject(StatObjectArgs.builder()
                     .bucket(bucket)
@@ -65,7 +65,6 @@ public class MinIOObjectStorageAdapter implements ObjectStoragePort {
     @Override
     public PresignedPost presignPost(PresignedPostRequest request) {
         try {
-            Comparator.comparingInt(Part::partNumber);
             log.debug("Retrieving post policy {}", request.objectKey());
             ZonedDateTime expiration = ZonedDateTime.now(ZoneId.systemDefault())
                     .plus(request.ttl());

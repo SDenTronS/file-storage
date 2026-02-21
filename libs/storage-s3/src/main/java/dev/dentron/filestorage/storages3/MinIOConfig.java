@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 @AllArgsConstructor
 
 @Configuration
+@ConditionalOnBooleanProperty(prefix = "app.minio", name = "enabled", matchIfMissing = true)
 public class MinIOConfig {
     @Bean(destroyMethod = "close")
     public MinioAsyncClient minioClient(MinIOCredentials credentials){
@@ -40,14 +41,15 @@ public class MinIOConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "minio.init", name = "apply-cors", havingValue = "true")
     public CORSConfiguration corsConfiguration(MinIOCredentials credentials) {
         var cors = credentials.getCors();
         var rule =  new CORSConfiguration.CORSRule(
-                cors.getAllowedHeaders(), // Allowed headers
-                cors.getAllowedMethods(), // Allowed methods
-                cors.getAllowedOrigins(), // Allowed origins
-                cors.getAllowedHeaders(), // Expose headers
-                null, // ID
+                cors.getAllowedHeaders(),
+                cors.getAllowedMethods(),
+                cors.getAllowedOrigins(),
+                cors.getAllowedHeaders(),
+                null,
                 cors.getMaxAge()
         );
 
@@ -71,7 +73,7 @@ public class MinIOConfig {
                         new AbortIncompleteMultipartUpload(lifecycle.getAbortIncompleteMultipartUploadDays()),
                         null,
                         new RuleFilter(prefix),
-                        "abort-mpu",
+                        "abort_mpu",
                         null,
                         null,
                         null));
