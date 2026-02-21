@@ -108,7 +108,7 @@ public class PersistenceService {
         file.markDeleted(now);
         fileRepository.save(file);
 
-        var uploadId = sessionViewOpt.map(UploadSessionRepository.SessionView::multipartUploadId).orElse(null);
+        var uploadId = sessionViewOpt.map(UploadSessionRepository.SessionView::getMultipartUploadId).orElse(null);
         var payload = new FileDeletedPayload(file.getBucket(), uploadId, file.getObjectKey());
         var outboxMessage = box(OutboxEventType.FILE_DELETED, AggregateType.FILE, fileId.toString(), payload);
         outbox.enqueueOutboxEvent(outboxMessage);

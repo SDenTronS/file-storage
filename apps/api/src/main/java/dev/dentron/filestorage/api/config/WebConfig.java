@@ -1,8 +1,10 @@
 package dev.dentron.filestorage.api.config;
 
+import dev.dentron.filestorage.api.security.jwt.JwtAuthenticationFilter;
 import dev.dentron.filestorage.common.util.DownloadTokenUtils;
 import org.apache.tomcat.util.threads.VirtualThreadExecutor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -27,5 +29,13 @@ public class WebConfig {
     @Bean
     public DownloadTokenUtils tokenUtils(@Value("${download.token.secret}") String secret) {
         return new DownloadTokenUtils(secret);
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> filterRegistrationBean(JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }
