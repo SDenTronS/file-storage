@@ -8,7 +8,10 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.json.JsonParseException;
+import org.springframework.boot.kafka.autoconfigure.KafkaConnectionDetails;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -27,6 +30,7 @@ import java.util.Map;
 
 @Configuration
 @EnableKafka
+@ConditionalOnBooleanProperty(prefix = "app.kafka", name = "enabled", matchIfMissing = true)
 public class KafkaConfig {
 
     @Bean
@@ -37,21 +41,21 @@ public class KafkaConfig {
                 .build();
     }
 
-    @Bean
-    public KafkaAdmin kafkaAdmin() {
-        Map<String, Object> configs = new HashMap<>();
-        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        return new KafkaAdmin(configs);
-    }
+//    @Bean
+//    public KafkaAdmin kafkaAdmin(KafkaConnectionDetails details) {
+//        Map<String, Object> configs = new HashMap<>();
+//        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+//        return new KafkaAdmin(configs);
+//    }
 
-    @Bean
-    public ProducerFactory<?, ?> producerFactory() {
-        return new DefaultKafkaProducerFactory<>(producerConfigs());
-    }
+//    @Bean
+//    public ProducerFactory<?, ?> producerFactory() {
+//        return new DefaultKafkaProducerFactory<>(producerConfigs());
+//    }
 
-    public Map<String, Object> producerConfigs() {
+    public Map<String, Object> producerConfigs(KafkaConnectionDetails details) {
         Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, details.getBootstrapServers());
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
 
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
@@ -68,9 +72,9 @@ public class KafkaConfig {
     }
 
     @Bean
-    public Map<String, Object> consumerConfigs() {
+    public Map<String, Object> consumerConfigs(KafkaConnectionDetails details) {
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, details.getBootstrapServers());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
 
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
@@ -81,19 +85,20 @@ public class KafkaConfig {
     }
 
     @Bean("outbox-container-factory")
-    public KafkaListenerContainerFactory<?> outboxKafkaListenerContainerFactory(@Qualifier("outbox-error-handler") CommonErrorHandler errorHandler) {
+    public KafkaListenerContainerFactory<?> outboxKafkaListenerContainerFactory(@Qualifier("outbox-error-handler") CommonErrorHandler errorHandler,
+                                                                                ConsumerFactory<?, ?> consumerFactory) {
         ConcurrentKafkaListenerContainerFactory<String, OutboxMessage> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
+        factory.setConsumerFactory(consumerFactory);
         factory.setConcurrency(3);
         factory.setCommonErrorHandler(errorHandler);
         factory.getContainerProperties().setPollTimeout(3000);
         return factory;
     }
 
-    @Bean
-    public ConsumerFactory<String, OutboxMessage> consumerFactory() {
-        return new DefaultKafkaConsumerFactory<>(consumerConfigs());
-    }
+//    @Bean
+//    public ConsumerFactory<String, OutboxMessage> consumerFactory() {
+//        return new DefaultKafkaConsumerFactory<>(consumerConfigs());
+//    }
 
     @Bean("outbox-error-handler")
     public CommonErrorHandler errorHandler(KafkaTemplate<String, OutboxMessage> outboxKafkaTemplate) {
