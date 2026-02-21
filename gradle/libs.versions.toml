@@ -1,12 +1,17 @@
 [versions]
-springBoot = "4.0.2"
+springBoot = "4.0.3"
 flyway = "12.0.0"
 postgresql = "42.7.9"
-testcontainers = "1.21.4"
-lombok = "1.18.32"
+testcontainers = "2.0.3"
+junit = "6.0.2"
+lombok = "1.18.42"
 mapstruct = "1.6.3"
 lombokMapstructBinding = "0.2.0"
 tika = "3.2.2"
+minio = "8.6.0"
+awsS3 = "2.41.19"
+uuidCreator = "6.1.0"
+jwt = "4.5.0"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
@@ -14,6 +19,7 @@ spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies"
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 
 flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 
@@ -22,10 +28,19 @@ mapstruct-proc = { module = "org.mapstruct:mapstruct-processor", version.ref = "
 lombok-mapstruct-binding = { module = "org.projectlombok:lombok-mapstruct-binding", version.ref = "lombokMapstructBinding" }
 
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }
+minio = { module = "io.minio:minio", version.ref = "minio" }
+aws-sdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awsS3" }
+uuid-creator = { module = "com.github.f4b6a3:uuid-creator", version.ref = "uuidCreator" }
+auth0-jwt = { module = "com.auth0:java-jwt", version.ref = "jwt" }
 
 testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
-testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
-testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }

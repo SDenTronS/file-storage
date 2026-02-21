@@ -1,48 +1,36 @@
 plugins {
-    java
-    id("org.springframework.boot").version("4.0.2")
-    id("io.spring.dependency-management").version("1.1.7")
+    id("conventions-spring-app")
 }
 
 group = "dev.dentron"
 version = "0.0.1-SNAPSHOT"
 description = "api"
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-repositories {
-    mavenCentral()
-}
-
 dependencies {
-    implementation("org.springframework.boot:spring-boot-starter-validation")
-    implementation("com.auth0:java-jwt:4.5.0")
-    implementation("org.springframework.boot:spring-boot-starter-kafka")
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
-    testImplementation("org.springframework.kafka:spring-kafka-test")
-    implementation(project(":libs:storage-s3"))
-    implementation(project(":libs:persistence"))
-    implementation(project(":libs:common"))
-    implementation(project(":libs:domain"))
     implementation(project(":libs:application"))
+    implementation(project(":libs:util"))
+    implementation(project(":libs:domain"))
+    implementation(project(":libs:persistence"))
+    implementation(project(":libs:storage-s3"))
 
-    compileOnly(libs.lombok)
-    annotationProcessor(libs.lombok)
-    testCompileOnly(libs.lombok)
-    testAnnotationProcessor(libs.lombok)
-
+    implementation(libs.auth0.jwt)
+    implementation(libs.flyway.core)
     implementation("org.springframework.boot:spring-boot-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("org.springframework.boot:spring-boot-starter-kafka")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
-    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
-    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
+    runtimeOnly(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
 
-tasks.withType<Test> {
-    useJUnitPlatform()
+    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.springframework.kafka:spring-kafka-test")
+    testImplementation(libs.testcontainers.junit)
+    testImplementation(libs.testcontainers.postgresql)
 }

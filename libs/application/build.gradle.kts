@@ -1,34 +1,25 @@
 plugins {
-    id("java-library")
+    id("conventions-java-library")
+    id("conventions-lombok")
 }
 
 group = "dev.dentron"
 version = "1.0-SNAPSHOT"
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
+    implementation(project(":libs:domain"))
+    implementation(project(":libs:util"))
+
     implementation(platform(libs.spring.boot.bom))
     implementation("org.springframework.boot:spring-boot-data-jpa")
     implementation("org.springframework.boot:spring-boot-security")
-
-    implementation(project(":libs:domain"))
-    implementation(project(":libs:common"))
-    implementation("com.github.f4b6a3:uuid-creator:6.1.0")
-
-    compileOnly(libs.lombok)
-    annotationProcessor(libs.lombok)
-    testCompileOnly(libs.lombok)
-    testAnnotationProcessor(libs.lombok)
-
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation(libs.uuid.creator)
 
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-}
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
 
-tasks.test {
-    useJUnitPlatform()
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation(libs.testcontainers.junit)
+    testImplementation(libs.testcontainers.postgresql)
 }
