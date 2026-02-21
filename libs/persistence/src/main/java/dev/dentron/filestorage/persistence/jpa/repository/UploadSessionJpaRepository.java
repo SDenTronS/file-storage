@@ -2,8 +2,12 @@ package dev.dentron.filestorage.persistence.jpa.repository;
 
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
 import dev.dentron.filestorage.persistence.jpa.entity.UploadSessionEntity;
+import jakarta.persistence.EntityResult;
+import jakarta.persistence.FieldResult;
+import jakarta.persistence.SqlResultSetMapping;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.NativeQuery;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -23,7 +27,6 @@ public interface UploadSessionJpaRepository extends JpaRepository<UploadSessionE
     @Query(value = "SELECT id FROM upload_session WHERE file_id = :fileId", nativeQuery = true)
     Optional<UUID> findIdByFileId(@Param("fileId") UUID fileId);
 
-    @Modifying
     @Query(value = "" +
             "UPDATE upload_session " +
             "SET status = :toStatus " +
@@ -36,27 +39,13 @@ public interface UploadSessionJpaRepository extends JpaRepository<UploadSessionE
                                                 @Param("allowedStatuses") List<String> allowedStatuses,
                                                 @Param("allowExpired") boolean allowExpired);
 
-    @Modifying
-    @Query(value = "" +
-            "UPDATE upload_session " +
-            "SET status = :toStatus " +
-            "WHERE multipart_upload_id = :multipartUploadId " +
-            "     AND (expires_at > now() OR :allowExpired)" +
-            "     AND status IN (:allowedStatuses) " +
-            "RETURNING *", nativeQuery = true)
-    Optional<UploadSessionEntity> tryTransition(@Param("multipartUploadId") String multipartUploadId,
-                                                @Param("toStatus") String toStatus,
-                                                @Param("allowedStatuses") List<String> allowedStatuses,
-                                                @Param("allowExpired") boolean allowExpired);
-
-    @Modifying
-    @Query(value = "" +
+    @NativeQuery(value = "" +
             "UPDATE upload_session " +
             "SET status = :toStatus " +
             "WHERE id = :sessionId " +
             "     AND (expires_at > now() OR :allowExpired)" +
             "     AND status IN (:allowedStatuses) " +
-            "RETURNING id, multipart_upload_id AS multipartUploadId, file_id AS fileId, expires_at AS expiresAt", nativeQuery = true)
+            "RETURNING id AS id, multipart_upload_id AS multipartUploadId, file_id AS fileId, expires_at AS expiresAt")
     Optional<UploadSessionRepository.SessionView> tryTransitionView(@Param("sessionId") UUID sessionId,
                                                                     @Param("toStatus") String toStatus,
                                                                     @Param("allowedStatuses") List<String> allowedStatuses,
@@ -77,12 +66,11 @@ public interface UploadSessionJpaRepository extends JpaRepository<UploadSessionE
         """, nativeQuery = true)
     List<UploadSessionRepository.AbortRow> findExpiredNonAbortedByTimeForUpdate(@Param("limit") int limit);
 
-    @Modifying
     @Query(value = "UPDATE upload_session SET status = 'ABORTED' WHERE id IN (:ids) RETURNING id", nativeQuery = true)
-    List<UUID> markAborted(Collection<UUID> ids);
+    List<UUID> markAborted(@Param("ids") Collection<UUID> ids);
 
     @Modifying
     @Query(value = "UPDATE upload_session SET status = 'ABORTED' WHERE multipart_upload_id = :multipartUploadId RETURNING id", nativeQuery = true)
-    List<UUID> markAborted(String multipartUploadId);
+    List<UUID> markAborted(@Param("multipartUploadId") String multipartUploadId);
 
 }

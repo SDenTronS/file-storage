@@ -51,10 +51,9 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
         return repository.findForUpdateById(fileId).map(mapper::toDomain);
     }
 
-    //TODO
     @Override
     public Optional<FileView> findViewById(UUID fileId) {
-        return Optional.empty();
+        return repository.findViewById(fileId);
     }
 
     @Override

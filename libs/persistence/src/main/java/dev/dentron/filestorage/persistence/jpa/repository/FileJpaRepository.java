@@ -17,13 +17,13 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 public interface FileJpaRepository extends JpaRepository<FileEntity, UUID> {
-    @Modifying
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<FileEntity> findForUpdateById(UUID fileId);
 
-    List<FileEntity> findAllById(List<UUID> ids);
+    Optional<FileObjectRepository.FileView> findViewById(@Param("fileId") UUID fileId);
 
-    @Modifying
+    List<FileEntity> findAllByIdIn(List<UUID> ids);
+
     @Query(value = "" +
             "UPDATE file_object " +
             "SET status = :toStatus, " +

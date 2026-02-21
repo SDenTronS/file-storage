@@ -36,10 +36,10 @@ public interface UploadSessionRepository extends CrudRepo<UploadSession, UUID> {
     }
 
     interface SessionView {
-        UUID id();
-        String multipartUploadId();
-        UUID fileId();
-        Instant expiresAt();
+        UUID getId();
+        String getMultipartUploadId();
+        UUID getFileId();
+        Instant getExpiresAt();
     }
 
     List<UUID> markAborted(Collection<UUID> ids);

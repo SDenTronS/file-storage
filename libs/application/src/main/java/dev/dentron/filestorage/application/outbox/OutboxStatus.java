@@ -9,7 +9,7 @@ public enum OutboxStatus {
     PUBLISHED( "PUBLISHED"),
     FAILED("FAILED");
 
-    private String status;
+    private final String status;
 
     OutboxStatus(String s) {
         this.status = s;

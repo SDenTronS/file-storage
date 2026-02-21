@@ -8,13 +8,11 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 public interface DownloadTokenJpaRepository extends JpaRepository<DownloadTokenEntity, Long> {
     Optional<DownloadTokenEntity> findByTokenHash(String tokenHash);
 
     @Modifying
-    //TODO нааписать запрос
     @Query(value =
             " UPDATE download_token " +
             " SET redeemed_at = :now, redeemed_by_service = :redeemer" +

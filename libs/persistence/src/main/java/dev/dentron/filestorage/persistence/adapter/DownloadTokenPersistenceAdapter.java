@@ -5,8 +5,9 @@ import dev.dentron.filestorage.domain.DownloadToken;
 import dev.dentron.filestorage.persistence.jpa.entity.DownloadTokenEntity;
 import dev.dentron.filestorage.persistence.jpa.repository.DownloadTokenJpaRepository;
 import dev.dentron.filestorage.persistence.mapper.DownloadTokenMapper;
+
+import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -50,7 +51,7 @@ public class DownloadTokenPersistenceAdapter implements DownloadTokenRepository 
     }
 
     @Override
-    public Optional<DownloadToken> tryRedeem(String tokenHash, String redeemerId) {
-        return null;
+    public Optional<DownloadToken> tryRedeem(String tokenHash, String redeemerId, Instant redeemTime) {
+        return repository.tryRedeem(tokenHash, redeemerId, redeemTime).map(mapper::toDomain);
     }
 }

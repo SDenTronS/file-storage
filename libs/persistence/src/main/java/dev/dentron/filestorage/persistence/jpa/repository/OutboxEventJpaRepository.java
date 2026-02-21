@@ -11,12 +11,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.UUID;
 
+// TODO статус PROCESSING и метка publishedAt
 public interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntity, UUID> {
-
-    //TODO добавить статус в процессе обработки или типо того
-    @Query(value = "SELECT * FROM outbox_event e WHERE e.status = :status ORDER BY e.created_at ASC FOR UPDATE SKIP LOCKED", nativeQuery = true)
-    List<OutboxEventEntity> findByStatusOrderByCreatedAtAsc(@Param("status") OutboxStatus status, Pageable pageable);
-
 
     @Query(value = "SELECT * FROM outbox_event e WHERE e.status = 'NEW' ORDER BY e.created_at ASC LIMIT :limit FOR UPDATE SKIP LOCKED", nativeQuery = true)
     List<OutboxEventEntity> findNewForUpdateOrderByCreatedAtAsc(@Param("limit") int limit);

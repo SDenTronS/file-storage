@@ -55,11 +55,6 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
         String objectKey = ns.root() + request.prefix() + "/" + fileId;
         String bucket = storage.bucket();
 
-//        final var checkExists =
-//                request.override()
-//                        ? CompletableFuture.completedFuture(false)
-//                        : storage.exists(bucket, objectKey);
-
         var multipartUploadRequest = new ObjectStoragePort.CreateMultipartUploadRequest(
                 bucket,
                 storage.region(),
@@ -67,15 +62,6 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
         );
 
         FileObject file = new FileObject(fileId, ns.serviceId(), objectKey, request.originalFileName(), bucket);
-
-
-//        return checkExists.thenComposeAsync(r -> {
-//            if (r) {
-//                throw new ObjectAlreadyExistsException(bucket, objectKey);
-//            }
-//
-//            return createUploadSession(sessionId, expiresAt, multipartUploadRequest, file, request.expectedContentType());
-//        }, executor);
 
         return storage
                 .createMultipartUploadAsync(multipartUploadRequest)
@@ -193,7 +179,8 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
     @Transactional
     public PresignedUrl redeemToken(NamespaceContext redeemer, RedeemTokenRequest request) {
         String hash = tokenUtils.hash(request.token());
-        DownloadToken token = tokenRepository.tryRedeem(hash, redeemer.serviceId())
+        Instant now = Instant.now();
+        DownloadToken token = tokenRepository.tryRedeem(hash, redeemer.serviceId(), now)
                 .orElseThrow(() -> new IllegalStateException("Token is not valid"));
 
         FileObject file = fromId(token.getFileId());
@@ -231,7 +218,7 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
                         Map.of(),
                         ttl
                 )
-        ), Instant.now().plus(ttl));
+        ), now.plus(ttl));
     }
 
     @Override
