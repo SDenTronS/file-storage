@@ -3,7 +3,7 @@ package dev.dentron.filestorage.api.dto.upload;
 import java.time.Instant;
 import java.util.UUID;
 
-public record UploadCreateResponseDto(
+public record UploadCreateResponseDTO(
         UUID id,
         String multipartUploadId,
         UUID fileId,
