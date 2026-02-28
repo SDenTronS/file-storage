@@ -64,7 +64,7 @@ public class UploadController {
 
         return createUploadUseCase.createMultipartUploadSessionAsync(ns, createRequest)
                 .thenApply(result -> ResponseEntity.ok(
-                        new UploadCreateResponseDto(
+                        new UploadCreateResponseDTO(
                                 result.id(),
                                 result.multipartUploadId(),
                                 result.fileId(),
@@ -88,7 +88,7 @@ public class UploadController {
         var presignedUrl = createUploadUseCase.presignMultipartPut(ns, presignedMultipartRequest);
 
 
-        return ResponseEntity.ok(new PresignedUrlResponseDto(
+        return ResponseEntity.ok(new PresignedUrlResponseDTO(
                 presignedUrl.url(),
                 presignedUrl.expiresAt()
         ));
@@ -112,7 +112,7 @@ public class UploadController {
 
         return completeUploadUseCase.completeMultipartUpload(ns, completeRequest)
                 .thenApply(result -> ResponseEntity.ok(
-                        new UploadCompleteResponseDto(
+                        new UploadCompleteResponseDTO(
                                 result.fileId(),
                                 result.etag()
                         )));
@@ -120,7 +120,7 @@ public class UploadController {
 
     }
 
-    @PostMapping("/files/{fileId}")
+    @PostMapping("/files/{fileId}/download-url")
     public ResponseEntity<?> presignFile(
             @PathVariable UUID fileId,
             @CurrentService ServiceDetails currentService) {
@@ -131,7 +131,24 @@ public class UploadController {
 
 
         return ResponseEntity.ok(
-                new PresignedUrlResponseDto(
+                new PresignedUrlResponseDTO(
+                        result.url(),
+                        result.expiresAt()
+                ));
+    }
+
+    @PostMapping("/download-tokens/redeem")
+    public ResponseEntity<?> redeemToken(
+            @RequestParam("token") String token,
+            @CurrentService ServiceDetails currentService
+    ) {
+        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
+
+        var request = new IssueDownloadUseCase.RedeemTokenRequest(token);
+        var result = issueDownloadUseCase.redeemToken(ns, request);
+
+        return ResponseEntity.ok(
+                new PresignedUrlResponseDTO(
                         result.url(),
                         result.expiresAt()
                 ));
@@ -152,26 +169,8 @@ public class UploadController {
         var result = issueDownloadUseCase.issueDownloadToken(ns, tokenRequest);
 
         return ResponseEntity.ok(
-                new DownloadTokenResponseDto(
+                new DownloadTokenResponseDTO(
                         result.token(),
-                        result.expiresAt()
-                ));
-    }
-
-    @GetMapping("/files/{fileId}")
-    public ResponseEntity<?> redeemDownloadToken(
-            @PathVariable UUID fileId,
-            @RequestParam("token") String token,
-            @CurrentService ServiceDetails currentService)
-    {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        var request = new IssueDownloadUseCase.RedeemTokenRequest(token);
-        var result = issueDownloadUseCase.redeemToken(ns, request);
-
-        return ResponseEntity.ok(
-                new PresignedUrlResponseDto(
-                        result.url(),
                         result.expiresAt()
                 ));
     }
