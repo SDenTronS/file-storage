@@ -8,152 +8,115 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-
-import static dev.dentron.filestorage.common.util.ExceptionUtils.unwrap;
+import java.time.Instant;
 
 @Slf4j
 @RestControllerAdvice
-public class ApplicationExceptionHandler {
-    @ExceptionHandler(CompletionException.class)
-    public ResponseEntity<ApiErrorResponse> handleCompletionException(
-            CompletionException ex,
+public class ApplicationExceptionHandler extends ResponseEntityExceptionHandler {
+    @ExceptionHandler(DownloadTokenAlreadyUsedException.class)
+    public ProblemDetail handleDownloadTokenAlreadyUsedException(
+            DownloadTokenAlreadyUsedException ex,
             HttpServletRequest request
     ) {
-        return mapCause(unwrap(ex), request);
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        detail.setTitle("Download token already used");
+        detail.setProperty("errCode", "DOWNLOAD_TOKEN_ALREADY_USED");
+        enrichDetail(detail, request);
+
+        return detail;
     }
 
-    @ExceptionHandler(ExecutionException.class)
-    public ResponseEntity<ApiErrorResponse> handleExecutionException(
-            ExecutionException ex,
+    @ExceptionHandler(DownloadTokenExpiredException.class)
+    public ProblemDetail handleDownloadTokenExpiredException(
+            DownloadTokenExpiredException ex,
+            HttpServletRequest request
+    )  {
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.GONE);
+        detail.setTitle("Download token expired");
+        detail.setProperty("errCode", "DOWNLOAD_TOKEN_EXPIRED");
+        enrichDetail(detail, request);
+
+        return detail;
+    }
+
+    @ExceptionHandler(FileNotAccessibleException.class)
+    public ProblemDetail handleFileNotAccessibleException(
+            FileNotAccessibleException ex,
             HttpServletRequest request
     ) {
-        return mapCause(unwrap(ex), request);
+        HttpStatus status = switch (ex.reason()) {
+            case NOT_READY -> HttpStatus.CONFLICT;
+            case QUARANTINED -> HttpStatus.LOCKED;
+            case DELETED -> HttpStatus.GONE;
+        };
+
+        ProblemDetail detail = ProblemDetail.forStatus(status);
+        detail.setTitle("File is not accessible");
+        detail.setProperty("errCode", "FILE_NOT_ACCESSIBLE");
+        detail.setProperty("reason", ex.reason().name());
+        detail.setProperty("status", ex.status().name());
+        detail.setProperty("fileId", ex.fileId().toString());
+        enrichDetail(detail, request);
+
+        return detail;
     }
 
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiErrorResponse> handleResponseStatusException(
-            ResponseStatusException ex,
+    @ExceptionHandler(UploadSessionException.class)
+    public ProblemDetail handleUploadSessionException(
+            UploadSessionException ex,
             HttpServletRequest request
     ) {
-        ApiErrorResponse body = ApiErrorResponse.fromResponseStatusException(ex, request.getRequestId());
-        return ResponseEntity.status(ex.getStatusCode()).body(body);
+        HttpStatus status = switch (ex.reason()) {
+            case EXPIRED -> HttpStatus.GONE;
+            case ALREADY_COMPLETED, INVALID_STATE -> HttpStatus.CONFLICT;
+        };
+
+        ProblemDetail detail = ProblemDetail.forStatus(status);
+        detail.setTitle("Upload session is not valid");
+        detail.setProperty("errCode", ex.code());
+        detail.setProperty("reason", ex.reason().name());
+        enrichDetail(detail, request);
+
+        return detail;
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ApiErrorResponse> handleRuntimeException(
-            RuntimeException ex,
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ProblemDetail handleEntityNotFoundException(
+            EntityNotFoundException ex,
             HttpServletRequest request
     ) {
-        return mapCause(ex, request);
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        detail.setTitle("Resource not found");
+        detail.setProperty("errCode", "NOT_FOUND");
+        enrichDetail(detail, request);
+
+        return detail;
     }
 
-    private ResponseEntity<ApiErrorResponse> mapCause(Throwable cause, HttpServletRequest request) {
-
-        if (cause instanceof DownloadTokenAlreadyUsedException) {
-            return clientError(
-                    HttpStatus.CONFLICT,
-                    "Conflict",
-                    request,
-                    cause,
-                    List.of(fieldError("code", "DOWNLOAD_TOKEN_ALREADY_USED"))
-            );
-        }
-
-        if (cause instanceof DownloadTokenExpiredException) {
-            return clientError(
-                    HttpStatus.GONE,
-                    "Resource is no longer available",
-                    request,
-                    cause,
-                    List.of(fieldError("code", "DOWNLOAD_TOKEN_EXPIRED"))
-            );
-        }
-
-        if (cause instanceof FileNotAccessibleException ex) {
-            HttpStatus status = switch (ex.reason()) {
-                case NOT_READY -> HttpStatus.CONFLICT;
-                case QUARANTINED -> HttpStatus.LOCKED;
-                case DELETED -> HttpStatus.GONE;
-            };
-
-            List<ApiErrorResponse.FieldError> details = new ArrayList<>();
-            details.add(fieldError("code", "FILE_NOT_ACCESSIBLE"));
-            details.add(fieldError("reason", ex.reason().name()));
-            details.add(fieldError("status", ex.status().name()));
-            details.add(fieldError("fileId", ex.fileId().toString()));
-
-            return clientError(status, "File is not accessible", request, cause, details);
-        }
-
-        if (cause instanceof UploadSessionException ex) {
-            HttpStatus status = switch (ex.reason()) {
-                case EXPIRED -> HttpStatus.GONE;
-                case ALREADY_COMPLETED, INVALID_STATE -> HttpStatus.CONFLICT;
-            };
-
-            List<ApiErrorResponse.FieldError> details = new ArrayList<>();
-            details.add(fieldError("code", ex.code()));
-            details.add(fieldError("reason", ex.reason().name()));
-
-            return clientError(status, "Upload session is not valid", request, cause, details);
-        }
-
-        if (cause instanceof EntityNotFoundException) {
-            return clientError(
-                    HttpStatus.NOT_FOUND,
-                    "Resource not found",
-                    request,
-                    cause,
-                    List.of(fieldError("code", "NOT_FOUND"))
-            );
-        }
-
-        if (cause instanceof IllegalArgumentException) {
-            return clientError(
-                    HttpStatus.BAD_REQUEST,
-                    "Invalid request",
-                    request,
-                    cause,
-                    List.of(fieldError("code", "BAD_REQUEST"))
-            );
-        }
-
-        return serverError(request, cause);
-    }
-
-    private ResponseEntity<ApiErrorResponse> clientError(
-            HttpStatus status,
-            String safeMessage,
-            HttpServletRequest request,
-            Throwable t,
-            List<ApiErrorResponse.FieldError> fieldErrors
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleIllegalArgumentException(
+            IllegalArgumentException ex,
+            HttpServletRequest request
     ) {
-        log.warn("Request failed: status={}, requestId={}", status.value(), request.getRequestId(), t);
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        detail.setTitle("Invalid request");
+        detail.setProperty("errCode", "BAD_REQUEST");
+        enrichDetail(detail, request);
 
-        ApiErrorResponse body = ApiErrorResponse.of(safeMessage, request.getRequestId(), fieldErrors, null);
-        return ResponseEntity.status(status).body(body);
+        return detail;
     }
 
-    private ResponseEntity<ApiErrorResponse> serverError(HttpServletRequest request, Throwable t) {
-        log.warn("Unhandled error: requestId={}", request.getRequestId(), t);
-        ApiErrorResponse body = ApiErrorResponse.internalError(request.getRequestId());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
-    }
+    private static void enrichDetail(ProblemDetail detail, HttpServletRequest request) {
+        detail.setProperty("timestamp", Instant.now());
 
-    private static ApiErrorResponse.FieldError fieldError(String field, String message) {
-        return ApiErrorResponse.FieldError.builder()
-                .field(field)
-                .message(message)
-                .build();
+        if (request.getRequestId() != null) {
+            detail.setProperty("requestId", request.getRequestId());
+        }
     }
 }
 
