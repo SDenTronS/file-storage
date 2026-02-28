@@ -1,5 +1,0 @@
-minio.bucket=file-storage
-minio.endpoint=http://localhost:9000
-minio.region=eu-central-1
-minio.access-key=your_access_key
-minio.secret-key=your_secret_key
