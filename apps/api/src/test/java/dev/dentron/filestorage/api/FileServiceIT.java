@@ -45,7 +45,8 @@ import static org.mockito.Mockito.*;
 
 
 @SpringBootTest(classes = ApiApplication.class, properties = {
-        "app.minio.enabled=false"
+        "app.minio.enabled=false",
+        "app.security.enabled=false"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
@@ -53,9 +54,6 @@ public class FileServiceIT {
 
     @MockitoBean private ObjectStoragePort storagePort;
     @MockitoBean private OutboxPort outboxPort;
-
-    /** Disable real JWT verification for tests. */
-    @MockitoBean private JwtTokenVerifier tokenVerifier;
 
     @Autowired
     private FileService fileService;
@@ -180,7 +178,7 @@ public class FileServiceIT {
     @Test
     void testPresignPutThrowsWhenSessionExpired() {
         NamespaceContext ns = new NamespaceContext("svc-a");
-        UploadFixture fixture = createSessionAndFile("svc-a", Instant.now().minusSeconds(30), false);
+        UploadFixture fixture = createSessionAndFile("svc-a", Instant.now().minusSeconds(30));
 
         var request = new CreateUploadUseCase.PresignedPutRequest(fixture.sessionId());
 
@@ -190,10 +188,10 @@ public class FileServiceIT {
     }
 
     private UploadFixture createSessionAndFile(String ownerService) {
-        return createSessionAndFile(ownerService, Instant.now().plusSeconds(3600), true);
+        return createSessionAndFile(ownerService, Instant.now().plusSeconds(3600));
     }
 
-    private UploadFixture createSessionAndFile(String ownerService, Instant expiresAt, boolean markPartsUploaded) {
+    private UploadFixture createSessionAndFile(String ownerService, Instant expiresAt) {
         UUID fileId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
         String multipartUploadId = "upload-" + UUID.randomUUID();
@@ -215,9 +213,6 @@ public class FileServiceIT {
                 MediaType.APPLICATION_OCTET_STREAM_VALUE
         );
         sessionRepository.save(session);
-        if (markPartsUploaded) {
-            sessionRepository.tryMarkPartsUploaded(sessionId);
-        }
 
         return new UploadFixture(fileId, sessionId, multipartUploadId);
     }
