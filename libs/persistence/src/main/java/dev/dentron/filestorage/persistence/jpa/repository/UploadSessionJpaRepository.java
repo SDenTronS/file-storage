@@ -62,12 +62,13 @@ public interface UploadSessionJpaRepository extends JpaRepository<UploadSessionE
         SET status = 'ABORTING'
         FROM picked
         WHERE s.id = picked.id
-        RETURNING id, file_id, multipart_upload_id
+        RETURNING s.id, s.file_id, s.multipart_upload_id
         """, nativeQuery = true)
     List<UploadSessionRepository.AbortRow> findExpiredNonAbortedByTimeForUpdate(@Param("limit") int limit);
 
-    @Query(value = "UPDATE upload_session SET status = 'ABORTED' WHERE id IN (:ids) RETURNING id", nativeQuery = true)
-    List<UUID> markAborted(@Param("ids") Collection<UUID> ids);
+    @Modifying
+    @Query(value = "UPDATE UploadSessionEntity SET status = 'ABORTED' WHERE id IN (:ids)")
+    int markAborted(@Param("ids") Collection<UUID> ids);
 
     @Modifying
     @Query(value = "UPDATE upload_session SET status = 'ABORTED' WHERE multipart_upload_id = :multipartUploadId RETURNING id", nativeQuery = true)

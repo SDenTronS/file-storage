@@ -70,14 +70,8 @@ public class UploadSessionPersistenceAdapter implements UploadSessionRepository 
     @Override
     public Optional<UploadSession> tryMarkCompleting(UUID sessionId) {
         return repository
-                .tryTransition(sessionId, "COMPLETING", List.of("PARTS_UPLOADED"), false)
+                .tryTransition(sessionId, "COMPLETING", List.of("CREATED"), false)
                 .map(mapper::toDomain);
-    }
-
-    @Override
-    public Optional<SessionView> tryMarkPartsUploaded(UUID sessionId) {
-        return repository
-                .tryTransitionView(sessionId, "PARTS_UPLOADED", List.of("CREATED"), false);
     }
 
     @Override
@@ -89,14 +83,14 @@ public class UploadSessionPersistenceAdapter implements UploadSessionRepository 
     @Override
     public Optional<UploadSession> tryMarkAborting(UUID sessionId) {
         return repository
-                .tryTransition(sessionId, "ABORTING", List.of("CREATED", "PARTS_UPLOADED", "EXPIRED"), true)
+                .tryTransition(sessionId, "ABORTING", List.of("CREATED", "EXPIRED"), true)
                 .map(mapper::toDomain);
     }
 
     @Override
     public Optional<SessionView> tryMarkAborted(UUID sessionId) {
         return repository
-                .tryTransitionView(sessionId, "ABORTED", List.of("CREATED", "PARTS_UPLOADED", "EXPIRED", "ABORTING", "ABORTED"), true);
+                .tryTransitionView(sessionId, "ABORTED", List.of("CREATED", "EXPIRED", "ABORTING", "ABORTED"), true);
     }
 
     @Override
@@ -105,7 +99,7 @@ public class UploadSessionPersistenceAdapter implements UploadSessionRepository 
     }
 
     @Override
-    public List<UUID> markAborted(Collection<UUID> ids) {
+    public int markAborted(Collection<UUID> ids) {
         return repository.markAborted(ids);
     }
 

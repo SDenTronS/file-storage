@@ -19,8 +19,6 @@ public interface UploadSessionRepository extends CrudRepo<UploadSession, UUID> {
 
     Optional<UploadSession> tryMarkCompleting(UUID sessionId);
 
-    Optional<SessionView> tryMarkPartsUploaded(UUID sessionId);
-
     Optional<SessionView> tryMarkCompleted(UUID sessionId);
 
     Optional<UploadSession> tryMarkAborting(UUID sessionId);
@@ -30,9 +28,9 @@ public interface UploadSessionRepository extends CrudRepo<UploadSession, UUID> {
     List<AbortRow> findExpiredNonAbortedByTimeForUpdate(int limit);
 
     interface AbortRow {
-        UUID sessionId();
-        UUID fileId();
-        String multipartUploadId();
+        UUID getSessionId();
+        UUID getFileId();
+        String getMultipartUploadId();
     }
 
     interface SessionView {
@@ -42,7 +40,7 @@ public interface UploadSessionRepository extends CrudRepo<UploadSession, UUID> {
         Instant getExpiresAt();
     }
 
-    List<UUID> markAborted(Collection<UUID> ids);
+    int markAborted(Collection<UUID> ids);
 
     List<UUID> markAborted(String multipartUploadId);
 }

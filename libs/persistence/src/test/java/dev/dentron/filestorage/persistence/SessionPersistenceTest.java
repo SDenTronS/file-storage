@@ -54,10 +54,25 @@ public class SessionPersistenceTest {
 
     @Test
     @Transactional
-    public void testTryMarkCompletingFromCreatedShouldNotTransition() {
+    public void testTryMarkCompletingFromCreatedShouldTransition() {
         UploadSession session = createNewSession();
 
         var sessionViewOpt = uploadSessionRepository.tryMarkCompleting(session.getId());
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(sessionViewOpt).isPresent();
+
+        var sessionOpt = uploadSessionRepository.findById(session.getId());
+        assertThat(sessionOpt).isPresent();
+        assertThat(sessionOpt.get().getStatus()).isEqualTo(UploadSession.Status.COMPLETING);
+    }
+
+    @Test
+    @Transactional
+    public void testTryMarkCompletedFromCreatedShouldNotTransition() {
+        UploadSession session = createNewSession();
+
+        var sessionViewOpt = uploadSessionRepository.tryMarkCompleted(session.getId());
         entityManager.flush();
         entityManager.clear();
         assertThat(sessionViewOpt).isEmpty();
@@ -69,34 +84,13 @@ public class SessionPersistenceTest {
 
     @Test
     @Transactional
-    public void testTryMarkCompletingAfterPartsUploadedShouldTransition() {
-        UploadSession session = createNewSession();
-
-        var partsUploadedView = uploadSessionRepository.tryMarkPartsUploaded(session.getId());
-        entityManager.flush();
-        entityManager.clear();
-        assertThat(partsUploadedView).isPresent();
-
-        var completingSessionOpt = uploadSessionRepository.tryMarkCompleting(session.getId());
-        entityManager.flush();
-        entityManager.clear();
-        assertThat(completingSessionOpt).isPresent();
-        assertThat(completingSessionOpt.get().getStatus()).isEqualTo(UploadSession.Status.COMPLETING);
-
-        var reloaded = uploadSessionRepository.findById(session.getId());
-        assertThat(reloaded).isPresent();
-        assertThat(reloaded.get().getStatus()).isEqualTo(UploadSession.Status.COMPLETING);
-    }
-
-    @Test
-    @Transactional
     public void testTryCompleteAfterMarkedAborted() {
         UploadSession session = createNewSession();
 
-        List<UUID> aborted = uploadSessionRepository.markAborted(List.of(session.getId()));
+        int aborted = uploadSessionRepository.markAborted(List.of(session.getId()));
         entityManager.flush();
         entityManager.clear();
-        assertThat(aborted).isNotEmpty();
+        assertThat(aborted).isPositive();
 
         var sessionOpt = uploadSessionRepository.findById(session.getId());
         assertThat(sessionOpt).isPresent();

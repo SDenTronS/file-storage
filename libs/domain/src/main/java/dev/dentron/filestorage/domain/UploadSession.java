@@ -22,7 +22,6 @@ public class UploadSession {
 
     public enum Status {
         CREATED,
-        PARTS_UPLOADED,
         COMPLETING,
         COMPLETED,
         EXPIRED,
@@ -88,6 +87,8 @@ public class UploadSession {
         if (status == Status.COMPLETING) {
             return;
         }
+
+        status = Status.COMPLETING;
     }
 
     private void fail(UploadSessionException.Reason reason, String message) {

@@ -11,9 +11,9 @@ dependencies {
     implementation(project(":libs:util"))
 
     implementation(platform(libs.spring.boot.bom))
+    implementation(libs.jackson.databind)
     implementation("org.springframework.boot:spring-boot-data-jpa")
     implementation("org.springframework.boot:spring-boot-security")
-    implementation("org.springframework.boot:spring-boot-starter-web")
     implementation(libs.uuid.creator)
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

@@ -23,10 +23,10 @@ public interface FileObjectRepository extends CrudRepo<FileObject, UUID> {
     Optional<FileView> tryMarkDeleted(UUID fileId, Instant deletedAt);
 
     interface FileView {
-        UUID id();
-        String bucket();
-        String objectKey();
-        String contentType();
-        String originalName();
+        UUID getId();
+        String getBucket();
+        String getObjectKey();
+        String getContentType();
+        String getOriginalName();
     }
 }
