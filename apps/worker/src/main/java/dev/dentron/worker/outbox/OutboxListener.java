@@ -1,5 +1,6 @@
 package dev.dentron.worker.outbox;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import dev.dentron.filestorage.application.service.PersistenceService;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository.FileView;
@@ -30,6 +31,8 @@ import org.springframework.util.unit.DataSize;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.io.BufferedInputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,25 +55,29 @@ public class OutboxListener {
     private final Tika tika;
     private final ObjectMapper mapper;
 
-    @KafkaListener(topics = "file-storage", containerFactory = "outbox-container-factory")
+    @KafkaListener(groupId = "1", topics = "file-storage-outbox", containerFactory = "outbox-container-factory")
     public void listen(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+        log.debug("Received outbox message {}", message);
         OutboxEventType type = message.eventType();
         EventHandler handler = EVENT_HANDLERS.get(type);
 
         if (handler == null) {
+            log.warn("Unknown event type: {}", type);
             throw new IllegalStateException("Unsupported event type: " + type);
         }
 
         handler.handle(message, key);
+        log.debug("Handled outbox message with id: {}", message.eventId());
     }
 
-    @KafkaListener(topics = "file-storage-dlt")
+    // TODO batch listener
+    @KafkaListener(groupId = "1", topics = "file-storage-outbox-dlt")
     public void listenDlt(@Payload List<OutboxMessage> messages) {
         List<UUID> ids = messages.stream().map(OutboxMessage::eventId).toList();
         failMarker.markFailed(ids);
     }
 
-    //TODO может добавить асинхронность
+    //TODO reduce blocking ops
     private void handleFileUploaded(OutboxMessage message, String key) {
         FileUploadedPayload payload = mapper.readValue(message.payloadJson(), FileUploadedPayload.class);
 
@@ -85,28 +92,28 @@ public class OutboxListener {
                 .orElse(null);
 
         var objRequest = new ObjectStoragePort.GetObjectRequest(
-                fileView.bucket(),
-                fileView.objectKey(),
+                fileView.getBucket(),
+                fileView.getObjectKey(),
                 0,
                 DataSize.ofKilobytes(64).toBytes()
         );
 
         MediaType detected = detectMediaType(fileView, objRequest);
         if (detected == null) {
-            persistenceService.persistRejected(fileView.id());
+            persistenceService.persistRejected(fileView.getId());
             return;
         }
 
         if (!matchesExpected(detected, expectedContentType)) {
-            log.warn("Detected content type {} for file {} does not match expected {}", detected, fileView.objectKey(), expectedContentType);
-            persistenceService.persistRejected(fileView.id());
+            log.warn("Detected content type {} for file {} does not match expected {}", detected, fileView.getObjectKey(), expectedContentType);
+            persistenceService.persistRejected(fileView.getId());
             throw new IllegalStateException("Detected content type does not match expected");
         }
 
-        var metaRequest = new ObjectStoragePort.GetObjectMetadataRequest(fileView.bucket(), fileView.objectKey());
+        var metaRequest = new ObjectStoragePort.GetObjectMetadataRequest(fileView.getBucket(), fileView.getObjectKey());
         ObjectMetadata fileMeta = storage.getObjectMetadata(metaRequest).join();
 
-        persistenceService.persistReady(fileView.id(), detected.getBaseType().toString(), fileMeta.size());
+        persistenceService.persistReady(fileView.getId(), detected.getBaseType().toString(), fileMeta.size());
     }
 
     private boolean matchesExpected(MediaType detected, String expectedContentType) {
@@ -122,13 +129,13 @@ public class OutboxListener {
 
     private MediaType detectMediaType(FileView fileView, ObjectStoragePort.GetObjectRequest objRequest) {
         try (StorageObject obj = storage.getObject(objRequest).join()) {
-            return detect(obj, fileView.originalName());
+            return detect(obj, fileView.getOriginalName());
         } catch (java.util.concurrent.CompletionException e) {
             Throwable cause = ExceptionUtils.unwrap(e);
-            log.warn("Failed to get object for detection; file {}", fileView.objectKey(), cause);
+            log.warn("Failed to get object for detection; file {}", fileView.getObjectKey(), cause);
             return null;
         } catch (Exception e) {
-            log.warn("Failed to detect content type for file {}", fileView.objectKey(), e);
+            log.warn("Failed to detect content type for file {}", fileView.getObjectKey(), e);
             return null;
         }
     }
@@ -141,7 +148,13 @@ public class OutboxListener {
             metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, fileName);
         }
 
-        return tika.getDetector().detect(object.in(), metadata);
+        InputStream input = object.in();
+        if (!input.markSupported()) {
+            input = new BufferedInputStream(input);
+        }
+
+        input.mark(64 * 1024);
+        return tika.getDetector().detect(input, metadata);
     }
 
     private void handleFileDeleted(OutboxMessage message, String key) {

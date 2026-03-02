@@ -27,7 +27,7 @@ public class OutboxPublisher {
         var events = outboxPort.findNew(100);
         var futures = events.stream()
                 .map(event -> kafkaTemplate
-                        .send("file-storage", event.aggregateId(), event)
+                        .send("file-storage-outbox", event.aggregateId(), event)
                         .handle((r, t) -> {
                             if (t == null) {
                                 return r;

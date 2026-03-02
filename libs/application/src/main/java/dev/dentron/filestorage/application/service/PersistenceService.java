@@ -47,6 +47,8 @@ public class PersistenceService {
         file.setSize(size);
 
         fileRepository.tryMarkReady(fileId).orElseThrow(() -> new RuntimeException("Failed to mark file as ready"));
+        file.markReady();
+
         fileRepository.save(file);
     }
 

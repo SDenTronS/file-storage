@@ -32,6 +32,8 @@ public class OutboxPersistenceAdapter implements OutboxPort, OutboxFailMarker {
                 .toList();
     }
 
+
+    //TODO обновлять поле publishedAt
     @Override
     public void markPublished(List<UUID> messages) {
         repository.updateStatus(messages, OutboxStatus.PUBLISHED);
