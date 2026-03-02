@@ -1,0 +1,26 @@
+### Gradle Output / Cache ###
+**/build/
+**/.gradle/
+**/.kotlin/
+
+### IntelliJ IDEA ###
+**/.idea/
+*.iws
+*.ipr
+**/out/
+
+!**/src/main/**/build/
+!**/src/test/**/build/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+!gradle/wrapper/gradle-wrapper.jar
+
+### Local Secrets ###
+flyway.user.conf
+.env
+
+amplicode.xml
+compose.yaml
+compose.dev-infra.yaml
+secrets/

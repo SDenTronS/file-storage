@@ -1,0 +1,81 @@
+services:
+  api:
+    image: file-storage-api:latest
+    env_file:
+      - path: ./.env
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: api
+
+    depends_on:
+      - db
+      - broker
+      - min-io
+  worker:
+    image: file-storage-worker:latest
+    env_file:
+      - path: ./.env
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: worker
+    depends_on:
+      - db
+      - broker
+      - min-io
+  broker:
+    image: apache/kafka:4.1.1
+    container_name: broker
+    environment:
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - type: volume
+        source: kafka_data
+        target: /var/lib/kafka/data
+    ports:
+      - "9092:9092"
+  min-io:
+    image: quay.io/minio/aistor/minio:latest
+    environment:
+      # TODO выпустить нормальные ключи
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - type: bind
+        source: ${MINIO_LICENSE_FILE}
+        target: /minio.license
+        read_only: true
+
+      - type: volume
+        source: minio_data
+        target: /mnt/data
+
+      - type: volume
+        source: minio_certs
+        target: /etc/minio/certs
+    entrypoint: minio server /mnt/data --license /minio.license
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+  db:
+    image: postgres:18.2
+    ports:
+      - "${SPRING_DATASOURCE_PORT:-5432}:5432"
+    shm_size: 512mb
+    volumes:
+      - type: volume
+        source: pg_data
+        target: /var/lib/postgresql
+    environment:
+      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      POSTGRES_DATABASE: ${SPRING_DATASOURCE_DB}
+
+volumes:
+  minio_data:
+  minio_certs:
+  kafka_data:
+  pg_data:
+
+
