@@ -6,18 +6,15 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
 
-@Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER = "Authorization";
     private static final String AUTH_TOKEN = "Bearer ";
@@ -25,7 +22,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public final String thisServiceName;
 
     public JwtAuthenticationFilter(JwtTokenVerifier jwtTokenVerifier,
-                                   @Value("${app.name:file-storage}") String thisServiceName) {
+                                   String thisServiceName) {
         this.jwtTokenVerifier = jwtTokenVerifier;
         this.thisServiceName = thisServiceName;
     }

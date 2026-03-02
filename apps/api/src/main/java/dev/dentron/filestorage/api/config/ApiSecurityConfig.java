@@ -4,25 +4,37 @@ import dev.dentron.filestorage.api.security.jwt.Auth0JwtTokenVerifier;
 import dev.dentron.filestorage.api.security.jwt.JwtAuthenticationFilter;
 import dev.dentron.filestorage.api.security.jwt.JwtTokenVerifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
+@ConditionalOnBooleanProperty(prefix = "app.security", value = "enabled", havingValue = true)
 @EnableWebSecurity
-public class SecurityConfig {
+public class ApiSecurityConfig {
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter(
+            JwtTokenVerifier jwtTokenVerifier,
+            @Value("${app.name:file-storage}") String thisServiceName
+    ) {
+        return new JwtAuthenticationFilter(jwtTokenVerifier, thisServiceName);
+    }
 
     @Bean
-    public JwtTokenVerifier tokenVerifier(@Value("${JWT_PUBLIC_KEY:${jwt.public-key:}}") String publicKey) {
+    public JwtTokenVerifier tokenVerifier(@Value("${API_JWT_PUBLIC_KEY:${jwt.public-key:}}") String publicKey) {
         if (publicKey == null || publicKey.isBlank()) {
-            throw new IllegalStateException("JWT public key is not configured. Set JWT_PUBLIC_KEY env variable.");
+            throw new IllegalStateException("JWT public key is not configured. Set API_JWT_PUBLIC_KEY env variable.");
         }
         return new Auth0JwtTokenVerifier(publicKey);
     }
@@ -38,13 +50,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            JwtAuthenticationFilter jwtFilter,
-                                           CorsConfigurationSource corsConfigurationSource) {
+                                           CorsConfigurationSource corsConfigurationSource) throws Exception {
         return http
                 .authorizeHttpRequests((requests) -> requests
                         .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterAfter(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/actuator/**"))
                 .build();

@@ -2,19 +2,22 @@ package dev.dentron.filestorage.api.config;
 
 import dev.dentron.filestorage.api.security.jwt.JwtAuthenticationFilter;
 import dev.dentron.filestorage.common.util.DownloadTokenUtils;
-import org.apache.tomcat.util.threads.VirtualThreadExecutor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.VirtualThreadTaskExecutor;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Configuration
+@EnableAsync
+@EnableScheduling
 public class WebConfig {
     @Bean(destroyMethod = "close")
     public ExecutorService virtualThreadExecutor() {
@@ -32,6 +35,7 @@ public class WebConfig {
     }
 
     @Bean
+    @ConditionalOnBean(JwtAuthenticationFilter.class)
     public FilterRegistrationBean<JwtAuthenticationFilter> filterRegistrationBean(JwtAuthenticationFilter filter) {
         FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(filter);

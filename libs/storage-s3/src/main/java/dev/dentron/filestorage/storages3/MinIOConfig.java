@@ -5,6 +5,7 @@ import io.minio.errors.MinioException;
 import io.minio.messages.*;
 import jakarta.annotation.PostConstruct;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationRunner;
@@ -17,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.model.StorageClass;
 
+import java.awt.*;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.NoSuchAlgorithmException;
@@ -25,6 +27,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @AllArgsConstructor
 
 @Configuration
@@ -77,7 +80,7 @@ public class MinIOConfig {
                         null,
                         null,
                         null));
-
+        log.debug("Lifecycle configured: {}", lifecycle);
         return new LifecycleConfiguration(rules);
     }
 
