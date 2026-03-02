@@ -6,11 +6,15 @@ import dev.dentron.filestorage.domain.exception.FileNotAccessibleException;
 import dev.dentron.filestorage.domain.exception.UploadSessionException;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.xml.bind.ValidationException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.MDC;
+import org.springframework.http.*;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.time.Instant;
@@ -18,6 +22,33 @@ import java.time.Instant;
 @Slf4j
 @RestControllerAdvice
 public class ApplicationExceptionHandler extends ResponseEntityExceptionHandler {
+
+    @Override
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request) {
+        ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        detail.setTitle(ex.getTitleMessageCode());
+        detail.setProperty("errors", ex.getFieldErrors().stream().map(
+                error -> new ValidationFieldError(
+                        error.getField(),
+                        error.getRejectedValue(),
+                        error.getDefaultMessage()
+                )
+        ));
+
+        return createResponseEntity(detail, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    private record ValidationFieldError(
+            String field,
+            Object rejectedValue,
+            String message
+    ) {}
+
+
     @ExceptionHandler(DownloadTokenAlreadyUsedException.class)
     public ProblemDetail handleDownloadTokenAlreadyUsedException(
             DownloadTokenAlreadyUsedException ex,
@@ -118,5 +149,24 @@ public class ApplicationExceptionHandler extends ResponseEntityExceptionHandler 
             detail.setProperty("requestId", request.getRequestId());
         }
     }
+
+        @Override
+        protected ResponseEntity<Object> createResponseEntity(
+                @Nullable Object body,
+                HttpHeaders headers,
+                HttpStatusCode statusCode,
+                WebRequest request) {
+
+            if (body instanceof ProblemDetail pd) {
+                pd.setProperty("timestamp", Instant.now());
+            }
+
+            if (request.getHeader("X-Request-ID") != null) {
+                headers = HttpHeaders.copyOf(headers);
+                headers.set("X-Request-ID", request.getHeader("X-Request-ID"));
+            }
+
+            return super.createResponseEntity(body, headers, statusCode, request);
+        }
 }
 

@@ -1,7 +1,6 @@
 package dev.dentron.filestorage.api.controller;
 
 import dev.dentron.filestorage.api.dto.upload.*;
-import dev.dentron.filestorage.api.dto.upload.*;
 import dev.dentron.filestorage.api.security.CurrentService;
 import dev.dentron.filestorage.api.security.ServiceDetails;
 import dev.dentron.filestorage.application.port.FilePart;
@@ -9,17 +8,16 @@ import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.application.port.in.CompleteUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
 import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
+import dev.dentron.filestorage.application.port.in.FileQueryUseCase;
 import dev.dentron.filestorage.application.port.in.IssueDownloadUseCase;
-import dev.dentron.filestorage.common.util.PathUtils;
+import dev.dentron.filestorage.domain.FileObject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +31,7 @@ public class UploadController {
     private final CompleteUploadUseCase completeUploadUseCase;
     private final CreateUploadUseCase createUploadUseCase;
     private final DeleteFileUseCase deleteFileUseCase;
+    private final FileQueryUseCase fileQueryUseCase;
     private final IssueDownloadUseCase issueDownloadUseCase;
 
 
@@ -45,11 +44,12 @@ public class UploadController {
 
         String safePath;
 
-        try {
-            safePath = PathUtils.sanitizePath(request.path());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid path");
-        }
+//        try {
+//            safePath = PathUtils.sanitizePath(request.path());
+//        } catch (Exception e) {
+//            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid path");
+//        }
+        safePath = request.path();
 
         String safeFileName = StringUtils.getFilename(request.fileName());
 
@@ -94,7 +94,7 @@ public class UploadController {
         ));
     }
 
-    @PostMapping("/upload/{uploadId}/complete")
+    @PostMapping("/uploads/{uploadId}/complete")
     public CompletableFuture<ResponseEntity<?>> completeUpload(
             @PathVariable String uploadId,
             @RequestBody @Valid UploadCompleteRequestDTO request,
@@ -135,6 +135,29 @@ public class UploadController {
                         result.url(),
                         result.expiresAt()
                 ));
+    }
+
+    @GetMapping("/files/{fileId}")
+    public ResponseEntity<FileMetadataResponseDTO> getFile(
+            @PathVariable UUID fileId,
+            @CurrentService ServiceDetails currentService
+    ) {
+        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
+        var request = new FileQueryUseCase.GetFileRequest(fileId);
+        var file = fileQueryUseCase.getFile(ns, request);
+
+        if (file.status() == FileObject.Status.DELETED) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok(new FileMetadataResponseDTO(
+                file.fileId(),
+                file.originalName(),
+                file.size(),
+                file.contentType(),
+                toResponseStatus(file.status()),
+                file.createdAt()
+        ));
     }
 
     @PostMapping("/download-tokens/redeem")
@@ -186,6 +209,17 @@ public class UploadController {
         deleteFileUseCase.deleteFile(ns, request);
 
         return ResponseEntity.noContent().build();
+    }
+
+    private FileStatusResponse toResponseStatus(FileObject.Status status) {
+        return switch (status) {
+            case UPLOADING -> FileStatusResponse.UPLOADING;
+            case UPLOADED -> FileStatusResponse.UPLOADED;
+            case READY -> FileStatusResponse.READY;
+            case QUARANTINED -> FileStatusResponse.QUARANTINED;
+            case REJECTED -> FileStatusResponse.REJECTED;
+            case DELETED -> FileStatusResponse.DELETED;
+        };
     }
 
 }

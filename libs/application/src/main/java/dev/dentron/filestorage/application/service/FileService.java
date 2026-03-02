@@ -6,6 +6,7 @@ import dev.dentron.filestorage.application.port.PresignedUrl;
 import dev.dentron.filestorage.application.port.in.CompleteUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
 import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
+import dev.dentron.filestorage.application.port.in.FileQueryUseCase;
 import dev.dentron.filestorage.application.port.in.IssueDownloadUseCase;
 import dev.dentron.filestorage.application.port.out.DownloadTokenRepository;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository;
@@ -35,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
-public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, DeleteFileUseCase, IssueDownloadUseCase {
+public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, DeleteFileUseCase, FileQueryUseCase, IssueDownloadUseCase {
     private static final DataSize DATA_SIZE = DataSize.ofGigabytes(5);
     private final FileObjectRepository fileRepository;
     private final UploadSessionRepository sessionRepository;
@@ -234,6 +235,25 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
         log.debug("Token issued, id={}, hash={}, fileId={}, issuer={}, redeemer={}, expiresAt={}", downloadToken.getFileId(), hash, request.fileId(), ns.serviceId(), request.audienceService(), expiresAt);
 
         return new DownloadTokenResponse(token, expiresAt);
+    }
+
+    @Override
+    public FileMetadata getFile(NamespaceContext ns, GetFileRequest request) {
+        FileObject file = fromIdOwnedBy(request.fileId(), ns);
+
+        return new FileMetadata(
+                file.getId(),
+                file.getOwner(),
+                file.getBucket(),
+                file.getObjectKey(),
+                file.getOriginalName(),
+                file.getSize(),
+                file.getSha256(),
+                file.getEtag(),
+                file.getContentType(),
+                file.getStatus(),
+                file.getCreatedAt()
+        );
     }
 
 
