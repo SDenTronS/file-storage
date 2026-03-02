@@ -13,7 +13,7 @@ public class PathUtils {
 
         String p = raw.strip();
 
-        if (p.startsWith("/") || p.endsWith("/") || p.contains("\\") || p.indexOf('\0') >= 0) {
+        if (p.contains("\\") || p.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("Invalid prefix");
         }
 
