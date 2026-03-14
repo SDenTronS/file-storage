@@ -1,6 +1,7 @@
 package dev.dentron.filestorage.application.service;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import dev.dentron.filestorage.application.exception.ConflictException;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository;
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
 import dev.dentron.filestorage.application.outbox.AggregateType;
@@ -11,6 +12,7 @@ import dev.dentron.filestorage.application.outbox.payload.FileDeletedPayload;
 import dev.dentron.filestorage.application.outbox.payload.FileUploadedPayload;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
+import dev.dentron.filestorage.domain.exception.UploadSessionException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -39,17 +41,23 @@ public class PersistenceService {
     }
 
     @Transactional
-    public void persistReady(UUID fileId, String contentType, Long size) {
-        FileObject file = fileRepository.findForUpdateById(fileId)
-                .orElseThrow(() -> new EntityNotFoundException("File not found with id: " + fileId));
+    public void persistUploaded(FileObject file, String etag) {
+        Objects.requireNonNull(file, "file");
+        Objects.requireNonNull(etag, "etag");
 
-        file.setContentType(contentType);
-        file.setSize(size);
-
-        fileRepository.tryMarkReady(fileId).orElseThrow(() -> new RuntimeException("Failed to mark file as ready"));
-        file.markReady();
-
+        file.markUploaded();
+        file.setEtag(etag);
         fileRepository.save(file);
+
+        var payload = new FileUploadedPayload(file.getId());
+        var outboxMessage = box(OutboxEventType.FILE_UPLOADED, AggregateType.FILE, file.getId().toString(), payload);
+        outbox.enqueueOutboxEvent(outboxMessage);
+    }
+
+    @Transactional
+    public void persistReady(UUID fileId, String contentType, Long size) {
+        fileRepository.tryMarkReady(fileId, contentType, size)
+                .orElseThrow(() -> new RuntimeException("Failed to mark file as ready"));
     }
 
 
@@ -81,6 +89,10 @@ public class PersistenceService {
 
         uploadSessionRepository.tryMarkCompleted(sessionId).orElseThrow(() -> conflictOrNotFound(sessionId));
 
+        if (file.getStatus() == FileObject.Status.DELETED) {
+            throw new IllegalStateException("File already deleted for session with id");
+        }
+
         if (file.getStatus() == FileObject.Status.UPLOADED)
             return;
 
@@ -101,18 +113,46 @@ public class PersistenceService {
         FileObject file = fileRepository.findForUpdateById(fileId)
                 .orElseThrow(() -> new EntityNotFoundException("File not found with id: " + fileId));
 
-        var sessionViewOpt = uploadSessionRepository.findIdByFileId(fileId)
-                .flatMap(uploadSessionRepository::tryMarkAborted);
+        if (file.getStatus() == FileObject.Status.UPLOADING) {
+            throw new ConflictException(
+                    "UPLOAD_IN_PROGRESS",
+                    "Upload is still in progress. Use DELETE /v1/uploads/{sessionId} to abort it."
+            );
+        }
 
         if (file.getStatus() == FileObject.Status.DELETED)
             return;
 
-        file.markDeleted(now);
-        fileRepository.save(file);
+        fileRepository.tryMarkDeleted(fileId, now);
 
-        var uploadId = sessionViewOpt.map(UploadSessionRepository.SessionView::getMultipartUploadId).orElse(null);
-        var payload = new FileDeletedPayload(file.getBucket(), uploadId, file.getObjectKey());
+        var payload = new FileDeletedPayload(file.getBucket(), null, file.getObjectKey());
         var outboxMessage = box(OutboxEventType.FILE_DELETED, AggregateType.FILE, fileId.toString(), payload);
+        outbox.enqueueOutboxEvent(outboxMessage);
+    }
+
+    @Transactional
+    public void persistAborted(UUID sessionId, Instant now) {
+        Objects.requireNonNull(sessionId, "sessionId cannot be null");
+
+
+        var sessionView = uploadSessionRepository.tryMarkAborted(sessionId)
+                .orElseThrow(() -> new UploadSessionException(
+                        UploadSessionException.Reason.INVALID_STATE,
+                        "Upload session can no longer be aborted"
+                ));
+
+
+        FileObject file = fileRepository.findForUpdateById(sessionView.getFileId())
+                .orElseThrow(() -> new EntityNotFoundException("File not found with id: " + sessionView.getFileId()));
+
+        if (file.getStatus() == FileObject.Status.DELETED)
+            return;
+
+        fileRepository.tryMarkDeleted(file.getId(), now)
+                .orElseThrow(() -> new IllegalStateException("Failed to delete file for aborted upload session"));
+
+        var payload = new FileDeletedPayload(file.getBucket(), sessionView.getMultipartUploadId(), file.getObjectKey());
+        var outboxMessage = box(OutboxEventType.FILE_DELETED, AggregateType.FILE, file.getId().toString(), payload);
         outbox.enqueueOutboxEvent(outboxMessage);
     }
 

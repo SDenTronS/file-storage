@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
@@ -40,12 +38,7 @@ public class FilePersistenceTest {
 
     @Container
     @ServiceConnection
-    private static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:latest");
-//
-//    @DynamicPropertySource
-//    static void dynamicProperties(DynamicPropertyRegistry registry) {
-//        registry.add("spring.flyway.locations", () -> "filesystem:db/migration");
-//    }
+    private static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17.5");
 
     @Test
     @Transactional
@@ -69,7 +62,7 @@ public class FilePersistenceTest {
     public void testTryMarkReadyFromUploadingShouldNotTransition() {
         FileObject file = createNewFile();
 
-        var readyView = fileRepository.tryMarkReady(file.getId());
+        var readyView = fileRepository.tryMarkReady(file.getId(), "text/plain", 123L);
         entityManager.flush();
         entityManager.clear();
 
@@ -88,7 +81,7 @@ public class FilePersistenceTest {
         var uploadedView = fileRepository.tryMarkUploaded(file.getId(), "etag-2");
         assertThat(uploadedView).isPresent();
 
-        var readyView = fileRepository.tryMarkReady(file.getId());
+        var readyView = fileRepository.tryMarkReady(file.getId(), "text/plain", 123L);
         entityManager.flush();
         entityManager.clear();
 
@@ -97,6 +90,8 @@ public class FilePersistenceTest {
         var reloaded = fileRepository.findById(file.getId());
         assertThat(reloaded).isPresent();
         assertThat(reloaded.get().getStatus()).isEqualTo(FileObject.Status.READY);
+        assertThat(reloaded.get().getContentType()).isEqualTo("text/plain");
+        assertThat(reloaded.get().getSize()).isEqualTo(123L);
     }
 
     @Test
@@ -104,7 +99,7 @@ public class FilePersistenceTest {
     public void testTryMarkDeletedFromReadyShouldTransition() {
         FileObject file = createNewFile();
         fileRepository.tryMarkUploaded(file.getId(), "etag-3");
-        fileRepository.tryMarkReady(file.getId());
+        fileRepository.tryMarkReady(file.getId(), "text/plain", 123L);
 
         Instant deletedAt = Instant.now();
         var deletedView = fileRepository.tryMarkDeleted(file.getId(), deletedAt);
@@ -118,9 +113,76 @@ public class FilePersistenceTest {
         assertThat(reloaded.get().getStatus()).isEqualTo(FileObject.Status.DELETED);
     }
 
-    protected FileObject createNewFile() {
-        UUID fileId = UUID.randomUUID();
-        FileObject file = new FileObject(fileId, "service-a", "obj/" + fileId, "example.png", "bucket-main");
+    @Test
+    @Transactional
+    public void testScrollByOwnerReturnsNextCursor() {
+        FileObject alpha = createNewFile("service-a", "alpha.txt");
+        FileObject beta = createNewFile("service-a", "beta.txt");
+        FileObject gamma = createNewFile("service-a", "gamma.txt");
+        createNewFile("service-b", "foreign.txt");
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var firstPage = fileRepository.scrollByOwner("service-a", null, 2);
+
+        assertThat(firstPage.items()).extracting(FileObject::getId)
+                .containsExactly(alpha.getId(), beta.getId());
+        assertThat(firstPage.nextCursor()).isNotNull();
+
+        var secondPage = fileRepository.scrollByOwner("service-a", firstPage.nextCursor(), 2);
+
+        assertThat(secondPage.items()).extracting(FileObject::getId)
+                .containsExactly(gamma.getId());
+        assertThat(secondPage.nextCursor()).isNull();
+    }
+
+    @Test
+    @Transactional
+    public void testScrollByOwnerSupportsOffsetAndLimit() {
+        createNewFile(numUuid(1_111),"service-b", "foreign.txt");
+        FileObject alpha = createNewFile(numUuid(1), "service-a", "alpha.txt");
+        FileObject beta = createNewFile(numUuid(2),"service-a", "beta.txt");
+        FileObject gamma = createNewFile(numUuid(3), "service-a", "gamma.txt");
+
+        entityManager.flush();
+        entityManager.clear();
+
+        var page = fileRepository.findLimitByOwner("service-a", 1L, 2);
+
+        assertThat(page).extracting(FileObject::getId)
+                .containsExactly(beta.getId(), gamma.getId());
+        assertThat(page).extracting(FileObject::getOwner)
+                .containsOnly("service-a");
+    }
+
+    private static UUID numUuid(int num) {
+        if (num < 0) {
+            throw new IllegalArgumentException("num must be >= 0");
+        }
+
+        String s = "%032d".formatted(num);
+
+        return UUID.fromString(
+                s.substring(0, 8) + "-" +
+                        s.substring(8, 12) + "-" +
+                        s.substring(12, 16) + "-" +
+                        s.substring(16, 20) + "-" +
+                        s.substring(20)
+        );
+    }
+
+    private FileObject createNewFile() {
+        return createNewFile("service-a", "example.png");
+    }
+
+    private FileObject createNewFile(UUID fileId, String owner, String originalName) {
+        FileObject file = new FileObject(fileId, owner, "obj/" + fileId, originalName, "bucket-main");
         return fileRepository.save(file);
+    }
+
+    private FileObject createNewFile(String owner, String originalName) {
+        UUID fileId = UUID.randomUUID();
+        return createNewFile(fileId, owner, originalName);
     }
 }

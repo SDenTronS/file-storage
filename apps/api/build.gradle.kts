@@ -1,5 +1,6 @@
 plugins {
     id("conventions-spring-app")
+    `jvm-test-suite`
 }
 
 group = "dev.dentron"
@@ -10,8 +11,9 @@ dependencies {
     implementation(project(":libs:application"))
     implementation(project(":libs:util"))
     implementation(project(":libs:domain"))
-    implementation(project(":libs:persistence"))
-    implementation(project(":libs:storage-s3"))
+    implementation(project(":libs:messaging-kafka"))
+    runtimeOnly(project(":libs:persistence"))
+    runtimeOnly(project(":libs:storage-s3"))
 
     implementation(libs.auth0.jwt)
     implementation(libs.flyway.core)

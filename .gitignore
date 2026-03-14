@@ -49,3 +49,6 @@ flyway.user.conf
 
 compose.dev-infra.yaml
 secrets/
+
+### JS ###
+**/node_modules/

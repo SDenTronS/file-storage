@@ -3,26 +3,18 @@ package dev.dentron.filestorage.application.service;
 import com.github.f4b6a3.uuid.UuidCreator;
 import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.application.port.PresignedUrl;
+import dev.dentron.filestorage.application.port.in.AbortUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CompleteUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
 import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
-import dev.dentron.filestorage.application.port.in.FileQueryUseCase;
-import dev.dentron.filestorage.application.port.in.IssueDownloadUseCase;
-import dev.dentron.filestorage.application.port.out.DownloadTokenRepository;
-import dev.dentron.filestorage.application.port.out.FileObjectRepository;
 import dev.dentron.filestorage.application.port.out.ObjectStoragePort;
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
-import dev.dentron.filestorage.common.util.DownloadTokenUtils;
-import dev.dentron.filestorage.domain.DownloadToken;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -36,14 +28,11 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
-public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, DeleteFileUseCase, FileQueryUseCase, IssueDownloadUseCase {
-    private static final DataSize DATA_SIZE = DataSize.ofGigabytes(5);
-    private final FileObjectRepository fileRepository;
+public class FileService implements AbortUploadUseCase, CompleteUploadUseCase, CreateUploadUseCase, DeleteFileUseCase {
     private final UploadSessionRepository sessionRepository;
     private final PersistenceService persistenceService;
-    private final DownloadTokenRepository tokenRepository;
     private final ObjectStoragePort storage;
-    private final DownloadTokenUtils tokenUtils;
+    private final FileAccessService fileAccessService;
     private final DurationProperties properties;
     private final ExecutorService executor;
 
@@ -53,7 +42,7 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
         UUID sessionId = UuidCreator.getTimeBased();
 
         Instant expiresAt = Instant.now().plus(properties.multipart().sessionTtl());
-        String objectKey = ns.root() + request.prefix() + "/" + fileId;
+        String objectKey = objectKey(ns, request.prefix(), fileId);
         String bucket = storage.bucket();
 
         var multipartUploadRequest = new ObjectStoragePort.CreateMultipartUploadRequest(
@@ -94,6 +83,32 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
     }
 
     @Override
+    public CompletableFuture<DirectUploadResult> uploadFile(NamespaceContext ns, DirectUploadRequest request) {
+        UUID fileId = UuidCreator.getTimeBased();
+        String bucket = storage.bucket();
+        String objectKey = objectKey(ns, request.prefix(), fileId);
+
+        FileObject file = new FileObject(fileId, ns.serviceId(), objectKey, request.originalFileName(), bucket);
+
+        var putRequest = new ObjectStoragePort.PutObjectRequest(
+                bucket,
+                objectKey,
+                request.inputStream(),
+                request.sizeBytes(),
+                request.expectedContentType()
+        );
+
+        //TODO тут тоже про базу
+
+        return storage.putObjectAsync(putRequest)
+                .thenApplyAsync(putObjectResult -> {
+                    persistenceService.persistUploaded(file, putObjectResult.etag());
+
+                    return new DirectUploadResult(file.getId(), putObjectResult.etag());
+                }, executor);
+    }
+
+    @Override
     public PresignedUrl presignMultipartPut(NamespaceContext ns, PresignedMultipartPutRequest request) {
         UploadSession session = sessionRepository.findByMultipartUploadId(request.multipartUploadId())
                 .orElseThrow(() -> new EntityNotFoundException("Session not found with multipart upload id: " + request.multipartUploadId()));
@@ -116,7 +131,7 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
         Instant now = Instant.now();
         session.ensureAvailable(now);
 
-        FileObject file = fromIdOwnedBy(session.getFileId(), ns);
+        FileObject file = fileAccessService.getByIdOwnedBy(session.getFileId(), ns);
 
         Duration ttl = properties.presign().putTtl();
 
@@ -135,7 +150,7 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
     @Override
     public CompletableFuture<CompleteUploadResult> completeMultipartUpload(NamespaceContext ns, CompleteUploadRequest request) {
         UploadSession session = persistenceService.persistCompleting(request.multipartUploadId());
-        FileObject file = fromIdOwnedBy(session.getFileId(), ns);
+        FileObject file = fileAccessService.getByIdOwnedBy(session.getFileId(), ns);
 
         var completeRequest = new ObjectStoragePort.CompleteMultipartRequest(
                 storage.bucket(),
@@ -159,123 +174,22 @@ public class FileService implements CompleteUploadUseCase, CreateUploadUseCase, 
     }
 
     @Override
-    public PresignedUrl presignGet(NamespaceContext ns, PresignedGetRequest request) {
-        FileObject file = fromIdOwnedBy(request.fileId(), ns);
+    public void abortUpload(NamespaceContext ns, AbortUploadRequest request) {
+        UploadSession session = sessionRepository.findById(request.sessionId())
+                .orElseThrow(() -> new EntityNotFoundException("Session not found with id: " + request.sessionId()));
 
-        Duration ttl = properties.presign().getTtl();
-        Instant now = Instant.now();
-
-        return new PresignedUrl(storage.presign(
-                new ObjectStoragePort.PresignedRequest(
-                        file.getBucket(),
-                        file.getObjectKey(),
-                        ObjectStoragePort.PresignMethod.GET,
-                        Map.of(),
-                        ttl
-                )
-        ), now.plus(ttl));
-    }
-
-    @Override
-    @Transactional
-    public PresignedUrl redeemToken(NamespaceContext redeemer, RedeemTokenRequest request) {
-        String hash = tokenUtils.hash(request.token());
-        Instant now = Instant.now();
-        DownloadToken token = tokenRepository.tryRedeem(hash, redeemer.serviceId(), now)
-                .orElseThrow(() -> new IllegalStateException("Token is not valid"));
-
-        FileObject file = fromId(token.getFileId());
-        file.ensureAccessible();
-
-        if (!file.getOwner().equals(token.getIssuedByService())) {
-            log.error(
-                    "token/file ownership mismatch. tokenId={}, fileId={}, fileOwner={}, tokenIssuer={}",
-                    token.getId(),
-                    token.getFileId(),
-                    file.getOwner(),
-                    token.getIssuedByService()
-            );
-
-            throw new IllegalStateException("File does not belong to token issuer service. Owner " + file.getOwner() + ", issuer " + token.getIssuedByService());
-        }
-
-        if (!redeemer.serviceId().equals(token.getAudienceService())) {
-            log.error("token redeemed by wrong service. tokenId={}, audience={},  redeemedBy={}",
-                    token.getId(),
-                    token.getAudienceService(),
-                    token.getRedeemedByService()
-            );
-
-            throw new IllegalStateException("Redeemed by wrong service, redeemed by " + token.getRedeemedByService() + ", audience " + token.getAudienceService());
-        }
-
-        Duration ttl = properties.token().presignTtl();
-
-        return new PresignedUrl(storage.presign(
-                new ObjectStoragePort.PresignedRequest(
-                        storage.bucket(),
-                        file.getObjectKey(),
-                        ObjectStoragePort.PresignMethod.GET,
-                        Map.of(),
-                        ttl
-                )
-        ), now.plus(ttl));
-    }
-
-    @Override
-    public DownloadTokenResponse issueDownloadToken(NamespaceContext ns, IssueTokenRequest request) {
-        FileObject file = fromIdOwnedBy(request.fileId(), ns);
-
-        Instant expiresAt = Instant.now().plus(properties.token().ttl());
-        String token = tokenUtils.generateToken();
-        String hash = tokenUtils.hash(token);
-
-        DownloadToken downloadToken = new DownloadToken(hash, request.fileId(), ns.serviceId(), request.audienceService(), expiresAt);
-        tokenRepository.save(downloadToken);
-        log.debug("Token issued, id={}, hash={}, fileId={}, issuer={}, redeemer={}, expiresAt={}", downloadToken.getFileId(), hash, request.fileId(), ns.serviceId(), request.audienceService(), expiresAt);
-
-        return new DownloadTokenResponse(token, expiresAt);
-    }
-
-    @Override
-    public FileMetadata getFile(NamespaceContext ns, GetFileRequest request) {
-        FileObject file = fromIdOwnedBy(request.fileId(), ns);
-
-        return new FileMetadata(
-                file.getId(),
-                file.getOwner(),
-                file.getBucket(),
-                file.getObjectKey(),
-                file.getOriginalName(),
-                file.getSize(),
-                file.getSha256(),
-                file.getEtag(),
-                file.getContentType(),
-                file.getStatus(),
-                file.getCreatedAt()
-        );
-    }
-
-
-    private FileObject fromId(UUID fileId) {
-        return fileRepository.findById(fileId).orElseThrow(() -> new EntityNotFoundException("File not found with id: " + fileId));
-    }
-
-    private FileObject fromIdOwnedBy(UUID fileId, NamespaceContext ns) {
-        FileObject file = fromId(fileId);
-
-        if (!file.isOwnedBy(ns.serviceId())) {
-            log.warn("file belongs to different owner. fileId={}, fileOwner={}, callerService={}", file.getId(), file.getOwner(), ns.serviceId());
-            throw new AccessDeniedException("Forbidden");
-        }
-
-        return file;
+        fileAccessService.getByIdOwnedBy(session.getFileId(), ns);
+        persistenceService.persistAborted(session.getId(), Instant.now());
     }
 
     @Override
     public void deleteFile(NamespaceContext ns, DeleteFileRequest request) {
-        FileObject file = fromIdOwnedBy(request.fileId(), ns);
+        FileObject file = fileAccessService.getByIdOwnedBy(request.fileId(), ns);
         Instant now = Instant.now();
         persistenceService.persistDeleted(file.getId(), now);
+    }
+
+    private String objectKey(NamespaceContext ns, String prefix, UUID fileId) {
+        return ns.root() + prefix + "/" + fileId;
     }
 }

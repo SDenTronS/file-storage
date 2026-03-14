@@ -1,9 +1,11 @@
-package dev.dentron.filestorage;
+package dev.dentron.filestorage.messagingkafka;
 
 import dev.dentron.filestorage.application.outbox.OutboxMessage;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -26,23 +28,20 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@Slf4j
 @Configuration
 @EnableKafka
 @ConditionalOnBooleanProperty(prefix = "app.kafka", name = "enabled")
 public class KafkaConfig {
 
     @Bean
-    public NewTopic topic() {
-        return TopicBuilder.name("file-storage-outbox")
-                .partitions(1)
-                .build();
-    }
-
-    @Bean
-    public NewTopic dltTopic() {
-        return TopicBuilder.name("file-storage-outbox-dlt")
-                .partitions(1)
-                .build();
+    public KafkaAdmin.NewTopics kafkaTopics(KafkaTopicsProperties properties) {
+        return new KafkaAdmin.NewTopics(
+                buildTopic(properties.topics().fileUploaded()),
+                buildDltTopic(properties.topics().fileUploaded()),
+                buildTopic(properties.topics().fileDeleted()),
+                buildDltTopic(properties.topics().fileDeleted())
+        );
     }
 
     @Bean("producer-configs")
@@ -92,27 +91,62 @@ public class KafkaConfig {
 
     @Bean("outbox-container-factory")
     public KafkaListenerContainerFactory<ConcurrentMessageListenerContainer<String, OutboxMessage>> outboxKafkaListenerContainerFactory(
+            KafkaTopicsProperties properties,
             @Qualifier("outbox-error-handler") CommonErrorHandler errorHandler,
             ConsumerFactory<String, OutboxMessage> consumerFactory
     ) {
         ConcurrentKafkaListenerContainerFactory<String, OutboxMessage> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
-        factory.setConcurrency(3);
+        factory.setConcurrency(properties.listener().concurrency());
         factory.setCommonErrorHandler(errorHandler);
-        factory.getContainerProperties().setPollTimeout(3000);
+        factory.getContainerProperties().setPollTimeout(properties.listener().pollTimeoutMs());
         return factory;
     }
 
     @Bean("outbox-error-handler")
-    public CommonErrorHandler errorHandler(KafkaTemplate<String, OutboxMessage> outboxKafkaTemplate) {
+    public CommonErrorHandler errorHandler(
+            KafkaTopicsProperties properties,
+            KafkaTemplate<String, OutboxMessage> outboxKafkaTemplate
+    ) {
         Map<Class<?>, KafkaOperations<?, ?>> templates = new LinkedHashMap<>();
         templates.put(OutboxMessage.class, outboxKafkaTemplate);
-        DeadLetterPublishingRecoverer dlt = new DeadLetterPublishingRecoverer(templates);
+        DeadLetterPublishingRecoverer dlt = new DeadLetterPublishingRecoverer(
+                templates,
+                (record, exception) -> new TopicPartition(
+                        properties.dltTopicName(record.topic()),
+                        record.partition()
+                )
+        );
 
-        DefaultErrorHandler handler = new DefaultErrorHandler(dlt, new FixedBackOff(1000L, 3));
+        DefaultErrorHandler handler = new DefaultErrorHandler(
+                dlt,
+                new FixedBackOff(properties.retry().intervalMs(), properties.retry().maxAttempts())
+        );
         handler.addNotRetryableExceptions(IllegalArgumentException.class);
         handler.addNotRetryableExceptions(IllegalStateException.class);
         handler.addNotRetryableExceptions(IOException.class);
         return handler;
+    }
+
+    @Bean("log-listener-error-handler")
+    public KafkaListenerErrorHandler kafkaListenerErrorHandler() {
+        return (message, exception) -> {
+            log.error("KafkaListenerErrorHandler error occurred while processing outbox message", exception);
+            throw exception;
+        };
+    }
+
+    private NewTopic buildTopic(KafkaTopicsProperties.Topic topic) {
+        return TopicBuilder.name(topic.name())
+                .partitions(topic.partitions())
+                .replicas(topic.replicas())
+                .build();
+    }
+
+    private NewTopic buildDltTopic(KafkaTopicsProperties.Topic topic) {
+        return TopicBuilder.name(topic.dltName())
+                .partitions(topic.partitions())
+                .replicas(topic.replicas())
+                .build();
     }
 }

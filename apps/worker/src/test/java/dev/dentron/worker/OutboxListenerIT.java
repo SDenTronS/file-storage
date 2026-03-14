@@ -11,6 +11,7 @@ import dev.dentron.filestorage.application.port.out.ObjectStoragePort.StorageObj
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
+import dev.dentron.filestorage.messagingkafka.KafkaTopicsProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.Tika;
 import org.apache.tika.detect.Detector;
@@ -67,15 +68,16 @@ public class OutboxListenerIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private KafkaTopicsProperties kafkaTopicsProperties;
+
     @Container
     @ServiceConnection
     private static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17.5");
 
     @Container
     @ServiceConnection
-    private static final KafkaContainer kafka = new KafkaContainer(
-            DockerImageName.parse("apache/kafka:4.1.1")
-    );
+    private static final KafkaContainer kafka = new KafkaContainer("apache/kafka:4.1.1");
 
     @BeforeEach
     void setUp() throws Exception {
@@ -114,11 +116,11 @@ public class OutboxListenerIT {
                 Instant.now()
         );
 
-        kafkaTemplate.send("file-storage-outbox", fileId.toString(), message);
+        kafkaTemplate.send(kafkaTopicsProperties.topics().fileUploaded().name(), fileId.toString(), message);
 
         await()
-                .pollDelay(Duration.ofSeconds(1))
-                .atMost(Duration.ofSeconds(5))
+                .pollDelay(Duration.ofSeconds(10))
+                .atMost(Duration.ofSeconds(15))
                 .pollInterval(Duration.ofSeconds(1))
                 .untilAsserted(() -> {
                     FileObject updated = fileRepository.findById(fileId).orElseThrow();

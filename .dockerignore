@@ -20,7 +20,3 @@
 flyway.user.conf
 .env
 
-amplicode.xml
-compose.yaml
-compose.dev-infra.yaml
-secrets/

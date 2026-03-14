@@ -9,6 +9,7 @@ import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
 import dev.dentron.filestorage.application.port.out.outbox.OutboxPort;
 import dev.dentron.filestorage.application.outbox.OutboxMessage;
 import dev.dentron.filestorage.application.service.DurationProperties;
+import dev.dentron.filestorage.application.service.FileAccessService;
 import dev.dentron.filestorage.application.service.FileService;
 import dev.dentron.filestorage.application.service.PersistenceService;
 import dev.dentron.filestorage.domain.FileObject;
@@ -83,12 +84,10 @@ class CompleteUploadUseCaseTest {
             when(storage.bucket()).thenReturn("bucket-1");
 
             var service = new FileService(
-                    fileRepository,
                     sessionRepository,
                     persistence,
-                    null,
                     storage,
-                    null,
+                    new FileAccessService(fileRepository),
                     durations(),
                     executor
             );
@@ -121,12 +120,10 @@ class CompleteUploadUseCaseTest {
                     .thenThrow(new EntityNotFoundException("Upload session not found with id: expired"));
 
             var service = new FileService(
-                    fileRepository,
                     sessionRepository,
                     persistence,
-                    null,
                     storage,
-                    null,
+                    new FileAccessService(fileRepository),
                     durations(),
                     executor
             );
@@ -163,12 +160,10 @@ class CompleteUploadUseCaseTest {
             when(file.isOwnedBy(anyString())).thenReturn(false);
 
             var service = new FileService(
-                    fileRepository,
                     sessionRepository,
                     persistence,
-                    null,
                     storage,
-                    null,
+                    new FileAccessService(fileRepository),
                     durations(),
                     executor
             );

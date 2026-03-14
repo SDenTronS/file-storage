@@ -10,7 +10,7 @@ dependencies {
     implementation(project(":libs:application"))
     implementation(project(":libs:util"))
     implementation(project(":libs:domain"))
-    implementation(project(":libs:persistence"))
+    runtimeOnly(project(":libs:persistence"))
     runtimeOnly(project(":libs:messaging-kafka"))
     runtimeOnly(project(":libs:storage-s3"))
 
@@ -21,6 +21,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-kafka")
     runtimeOnly(libs.flyway.database.postgresql)
     runtimeOnly(libs.postgresql)
+
+    testImplementation(project(":libs:messaging-kafka"))
 
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
     testImplementation("org.springframework.boot:spring-boot-starter-kafka-test")

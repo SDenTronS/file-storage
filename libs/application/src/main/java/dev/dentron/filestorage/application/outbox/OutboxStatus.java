@@ -5,8 +5,8 @@ import lombok.Getter;
 @Getter
 public enum OutboxStatus {
     NEW("NEW"),
-    PROCESSING( "PROCESSING"),
-    PUBLISHED( "PUBLISHED"),
+    CLAIMED("CLAIMED"),
+    PUBLISHED("PUBLISHED"),
     FAILED("FAILED");
 
     private final String status;

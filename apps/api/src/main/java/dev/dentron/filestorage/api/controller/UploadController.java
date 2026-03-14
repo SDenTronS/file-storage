@@ -5,20 +5,27 @@ import dev.dentron.filestorage.api.security.CurrentService;
 import dev.dentron.filestorage.api.security.ServiceDetails;
 import dev.dentron.filestorage.application.port.FilePart;
 import dev.dentron.filestorage.application.port.NamespaceContext;
+import dev.dentron.filestorage.application.port.in.AbortUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CompleteUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
-import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
-import dev.dentron.filestorage.application.port.in.FileQueryUseCase;
-import dev.dentron.filestorage.application.port.in.IssueDownloadUseCase;
-import dev.dentron.filestorage.domain.FileObject;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -26,32 +33,28 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 
 @RestController
+@Tag(name = "Uploads")
 @RequestMapping("/v1/")
 public class UploadController {
+    private final AbortUploadUseCase abortUploadUseCase;
     private final CompleteUploadUseCase completeUploadUseCase;
     private final CreateUploadUseCase createUploadUseCase;
-    private final DeleteFileUseCase deleteFileUseCase;
-    private final FileQueryUseCase fileQueryUseCase;
-    private final IssueDownloadUseCase issueDownloadUseCase;
 
 
-    @PostMapping("/uploads")
-    public CompletableFuture<ResponseEntity<?>> createMultipartUpload(
+    @Operation(summary = "Create upload session", description = "Start multipart upload.")
+    @ApiResponse(responseCode = "200", description = "Upload session created")
+    @ApiResponse(responseCode = "400", description = "Invalid request")
+    @ApiResponse(responseCode = "409", description = "File already exists")
+    @ApiResponse(responseCode = "502", description = "Storage error")
+    @PostMapping(value = "/uploads", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public CompletableFuture<ResponseEntity<UploadCreateResponseDTO>> createMultipartUpload(
             @RequestBody @Valid UploadCreateRequestDTO request,
+            @Parameter(hidden = true)
             @CurrentService ServiceDetails currentService)
     {
         NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        String safePath;
-
-//        try {
-//            safePath = PathUtils.sanitizePath(request.path());
-//        } catch (Exception e) {
-//            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid path");
-//        }
-        safePath = request.path();
-
-        String safeFileName = StringUtils.getFilename(request.fileName());
+        String safePath = normalizePath(request.path());
+        String safeFileName = normalizeFileName(request.fileName());
 
         var createRequest = new CreateUploadUseCase.CreateUploadRequest(
                 safePath,
@@ -72,10 +75,54 @@ public class UploadController {
                         )));
     }
 
+    @Operation(summary = "Direct upload", description = "Upload file in one request.")
+    @ApiResponse(responseCode = "200", description = "File uploaded")
+    @ApiResponse(responseCode = "400", description = "Invalid request")
+    @ApiResponse(responseCode = "409", description = "File already exists")
+    @ApiResponse(responseCode = "502", description = "Storage error")
+    @PostMapping(value = "/uploads/direct", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public CompletableFuture<ResponseEntity<UploadCompleteResponseDTO>> directUpload(
+            @RequestPart("request") @Valid DirectUploadRequestDTO request,
+            @RequestPart("file") MultipartFile file,
+            @Parameter(hidden = true)
+            @CurrentService ServiceDetails currentService
+    ) throws IOException {
+        if (file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File must not be empty.");
+        }
+
+        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
+        String safePath = normalizePath(request.path());
+        String safeFileName = normalizeFileName(file.getOriginalFilename());
+        String contentType = file.getContentType();
+
+        try (InputStream in = file.getInputStream()) {
+            var directUploadRequest = new CreateUploadUseCase.DirectUploadRequest(
+                    safePath,
+                    safeFileName,
+                    contentType,
+                    file.getSize(),
+                    in
+            );
+            return createUploadUseCase
+                    .uploadFile(ns, directUploadRequest)
+                    .thenApply(result -> ResponseEntity.ok(
+                            new UploadCompleteResponseDTO(result.fileId(), result.etag()))
+                    );
+        }
+    }
+
+    @Operation(summary = "Presign upload part", description = "Get upload URL for part.")
+    @ApiResponse(responseCode = "200", description = "URL generated")
+    @ApiResponse(responseCode = "400", description = "Invalid request")
+    @ApiResponse(responseCode = "404", description = "Upload not found")
+    @ApiResponse(responseCode = "409", description = "Upload state conflict")
+    @ApiResponse(responseCode = "410", description = "Upload expired")
     @PostMapping("/uploads/{uploadId}")
-    public ResponseEntity<?> uploadMultipart(
+    public ResponseEntity<PresignedUrlResponseDTO> uploadMultipart(
             @RequestParam("partNumber") @Positive int partNumber,
             @PathVariable @NotBlank String uploadId,
+            @Parameter(hidden = true)
             @CurrentService ServiceDetails currentService
     ) {
         NamespaceContext ns = new NamespaceContext(currentService.serviceId());
@@ -94,10 +141,37 @@ public class UploadController {
         ));
     }
 
+    @Operation(summary = "Abort upload", description = "Cancel multipart upload.")
+    @ApiResponse(responseCode = "204", description = "Upload aborted")
+    @ApiResponse(responseCode = "400", description = "Invalid request")
+    @ApiResponse(responseCode = "404", description = "Upload not found")
+    @ApiResponse(responseCode = "409", description = "Upload state conflict")
+    @DeleteMapping("/uploads/{sessionId}")
+    public ResponseEntity<Void> abortUpload(
+            @PathVariable UUID sessionId,
+            @Parameter(hidden = true)
+            @CurrentService ServiceDetails currentService
+    ) {
+        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
+        var request = new AbortUploadUseCase.AbortUploadRequest(sessionId);
+        abortUploadUseCase.abortUpload(ns, request);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Complete upload", description = "Finish multipart upload.")
+    @ApiResponse(responseCode = "200", description = "Upload completed")
+    @ApiResponse(responseCode = "400", description = "Invalid request")
+    @ApiResponse(responseCode = "404", description = "Upload not found")
+    @ApiResponse(responseCode = "409", description = "Upload state conflict")
+    @ApiResponse(responseCode = "410", description = "Upload expired")
+    @ApiResponse(responseCode = "422", description = "Invalid upload parts")
+    @ApiResponse(responseCode = "502", description = "Storage error")
     @PostMapping("/uploads/{uploadId}/complete")
-    public CompletableFuture<ResponseEntity<?>> completeUpload(
+    public CompletableFuture<ResponseEntity<UploadCompleteResponseDTO>> completeUpload(
             @PathVariable String uploadId,
             @RequestBody @Valid UploadCompleteRequestDTO request,
+            @Parameter(hidden = true)
             @CurrentService ServiceDetails currentService
     ) {
         NamespaceContext ns = new NamespaceContext(currentService.serviceId());
@@ -120,106 +194,16 @@ public class UploadController {
 
     }
 
-    @PostMapping("/files/{fileId}/download-url")
-    public ResponseEntity<?> presignFile(
-            @PathVariable UUID fileId,
-            @CurrentService ServiceDetails currentService) {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        var request = new IssueDownloadUseCase.PresignedGetRequest(fileId);
-        var result = issueDownloadUseCase.presignGet(ns, request);
-
-
-        return ResponseEntity.ok(
-                new PresignedUrlResponseDTO(
-                        result.url(),
-                        result.expiresAt()
-                ));
+    private String normalizePath(String path) {
+        return StringUtils.hasText(path) ? path : "";
     }
 
-    @GetMapping("/files/{fileId}")
-    public ResponseEntity<FileMetadataResponseDTO> getFile(
-            @PathVariable UUID fileId,
-            @CurrentService ServiceDetails currentService
-    ) {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-        var request = new FileQueryUseCase.GetFileRequest(fileId);
-        var file = fileQueryUseCase.getFile(ns, request);
-
-        if (file.status() == FileObject.Status.DELETED) {
-            return ResponseEntity.notFound().build();
+    private String normalizeFileName(String originalFileName) {
+        String safeFileName = StringUtils.getFilename(originalFileName);
+        if (!StringUtils.hasText(safeFileName)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File name is required.");
         }
 
-        return ResponseEntity.ok(new FileMetadataResponseDTO(
-                file.fileId(),
-                file.originalName(),
-                file.size(),
-                file.contentType(),
-                toResponseStatus(file.status()),
-                file.createdAt()
-        ));
+        return safeFileName;
     }
-
-    @PostMapping("/download-tokens/redeem")
-    public ResponseEntity<?> redeemToken(
-            @RequestParam("token") String token,
-            @CurrentService ServiceDetails currentService
-    ) {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        var request = new IssueDownloadUseCase.RedeemTokenRequest(token);
-        var result = issueDownloadUseCase.redeemToken(ns, request);
-
-        return ResponseEntity.ok(
-                new PresignedUrlResponseDTO(
-                        result.url(),
-                        result.expiresAt()
-                ));
-    }
-
-    @PostMapping("/files/{fileId}/download-token")
-    public ResponseEntity<?> issueDownloadToken(
-            @PathVariable UUID fileId,
-            @RequestBody @Valid IssueDownloadTokenRequestDTO request,
-            @CurrentService ServiceDetails currentService)
-    {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        var tokenRequest = new IssueDownloadUseCase.IssueTokenRequest(
-                request.audienceService(),
-                fileId
-        );
-        var result = issueDownloadUseCase.issueDownloadToken(ns, tokenRequest);
-
-        return ResponseEntity.ok(
-                new DownloadTokenResponseDTO(
-                        result.token(),
-                        result.expiresAt()
-                ));
-    }
-
-    @DeleteMapping("/files/{fileId}")
-    public ResponseEntity<Void> deleteFile(
-            @PathVariable UUID fileId,
-            @CurrentService ServiceDetails currentService)
-    {
-        NamespaceContext ns = new NamespaceContext(currentService.serviceId());
-
-        var request = new DeleteFileUseCase.DeleteFileRequest(fileId);
-        deleteFileUseCase.deleteFile(ns, request);
-
-        return ResponseEntity.noContent().build();
-    }
-
-    private FileStatusResponse toResponseStatus(FileObject.Status status) {
-        return switch (status) {
-            case UPLOADING -> FileStatusResponse.UPLOADING;
-            case UPLOADED -> FileStatusResponse.UPLOADED;
-            case READY -> FileStatusResponse.READY;
-            case QUARANTINED -> FileStatusResponse.QUARANTINED;
-            case REJECTED -> FileStatusResponse.REJECTED;
-            case DELETED -> FileStatusResponse.DELETED;
-        };
-    }
-
 }

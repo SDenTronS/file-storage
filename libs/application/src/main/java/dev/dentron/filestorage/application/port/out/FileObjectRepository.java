@@ -12,15 +12,32 @@ public interface FileObjectRepository extends CrudRepo<FileObject, UUID> {
 
     Optional<FileView> findViewById(UUID fileId);
 
+    List<FileObject> findAllByOwnerOrderByCreatedAtDesc(String owner);
+
     List<FileObject> findAllByIds(List<UUID> ids);
+
+    FileObjectScrollPage scrollByOwner(String owner, FileObjectScrollCursor cursor, int limit);
+
+    List<FileObject> findLimitByOwner(String owner, long offset, int limit);
 
     Optional<FileView> tryMarkUploaded(UUID fileId, String etag);
 
-    Optional<FileView> tryMarkReady(UUID fileId);
+    Optional<FileView> tryMarkReady(UUID fileId, String contentType, Long size);
 
     Optional<FileView> tryMarkRejected(UUID fileId);
 
     Optional<FileView> tryMarkDeleted(UUID fileId, Instant deletedAt);
+
+    record FileObjectScrollPage(
+            List<FileObject> items,
+            FileObjectScrollCursor nextCursor
+    ) {}
+
+    record FileObjectScrollCursor (
+            String createdAt,
+            String originalName,
+            UUID id
+    ) {}
 
     interface FileView {
         UUID getId();
@@ -28,5 +45,6 @@ public interface FileObjectRepository extends CrudRepo<FileObject, UUID> {
         String getObjectKey();
         String getContentType();
         String getOriginalName();
+        FileObject.Status getStatus();
     }
 }

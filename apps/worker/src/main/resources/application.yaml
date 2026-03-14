@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: worker
+  main:
+    web-application-type: none
+  datasource:
+    url: "jdbc:postgresql://${SPRING_DATASOURCE_HOST:localhost}:${SPRING_DATASOURCE_PORT:5432}/${SPRING_DATASOURCE_DB}"
+    username: "${SPRING_DATASOURCE_USERNAME:}"
+    password: "${SPRING_DATASOURCE_PASSWORD:}"
+    hikari:
+      maximum-pool-size: 300
+      minimum-idle: 10
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: none
+  kafka:
+    bootstrap-servers: "${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}"
+    admin:
+      fail-fast: true
+
+minio:
+  bucket: "${MINIO_BUCKET:}"
+  endpoint: "${MINIO_ENDPOINT:}"
+  region: "${MINIO_REGION:eu-central-1}"
+  access-key: "${MINIO_ACCESS_KEY:}"
+  secret-key: "${MINIO_SECRET_KEY:}"
+
+logging:
+  level:
+    org.springframework: INFO
+    io.minio: DEBUG
+    dev.dentron: DEBUG
+    org.flywaydb: DEBUG
+
+app:
+  minio:
+    enabled: "${APP_MINIO_ENABLED:true}"
+  kafka:
+    enabled: "${APP_KAFKA_ENABLED:true}"
+    topics:
+      file-uploaded:
+        name: "${APP_KAFKA_TOPIC_FILE_UPLOADED:file.uploaded.v1}"
+        dlt-name: "${APP_KAFKA_TOPIC_FILE_UPLOADED_DLT:file.uploaded.v1-dlt}"
+        partitions: "${APP_KAFKA_TOPIC_FILE_UPLOADED_PARTITIONS:8}"
+        replicas: "${APP_KAFKA_TOPIC_FILE_UPLOADED_REPLICAS:1}"
+      file-deleted:
+        name: "${APP_KAFKA_TOPIC_FILE_DELETED:file.deleted.v1}"
+        dlt-name: "${APP_KAFKA_TOPIC_FILE_DELETED_DLT:file.deleted.v1-dlt}"
+        partitions: "${APP_KAFKA_TOPIC_FILE_DELETED_PARTITIONS:8}"
+        replicas: "${APP_KAFKA_TOPIC_FILE_DELETED_REPLICAS:1}"
+    listener:
+      group-id: "${APP_KAFKA_LISTENER_GROUP_ID:1}"
+      concurrency: "${APP_KAFKA_LISTENER_CONCURRENCY:8}"
+      poll-timeout-ms: "${APP_KAFKA_LISTENER_POLL_TIMEOUT_MS:3000}"
+    retry:
+      interval-ms: "${APP_KAFKA_RETRY_INTERVAL_MS:1000}"
+      max-attempts: "${APP_KAFKA_RETRY_MAX_ATTEMPTS:3}"
+
+download:
+  token:
+    secret: "${API_DOWNLOAD_TOKEN_SECRET:change_me}"

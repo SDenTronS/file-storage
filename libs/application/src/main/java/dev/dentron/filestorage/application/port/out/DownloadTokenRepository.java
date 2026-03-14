@@ -4,7 +4,6 @@ import dev.dentron.filestorage.domain.DownloadToken;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 public interface DownloadTokenRepository extends CrudRepo<DownloadToken, Long> {
     Optional<DownloadToken> findByTokenHash(String tokenHash);

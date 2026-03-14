@@ -51,6 +51,20 @@ public interface ObjectStoragePort {
             String uploadId
     ) {}
 
+    CompletableFuture<PutObjectResult> putObjectAsync(PutObjectRequest request);
+
+    record PutObjectRequest(
+            String bucket,
+            String objectKey,
+            InputStream inputStream,
+            long size,
+            String contentType
+    ) {}
+
+    record PutObjectResult(
+            String etag
+    ) {}
+
     record CreateMultipartUploadRequest(
             String bucket,
             String region,
@@ -104,6 +118,15 @@ public interface ObjectStoragePort {
     ) {}
 
     record GetObjectMetadataRequest (String bucket, String objectKey) {}
+
+    CompletableFuture<DeleteResult> deleteObjectAsync(DeleteObjectRequest request);
+
+    enum DeleteResult {
+        DELETED,
+        ALREADY_GONE
+    }
+
+    record DeleteObjectRequest (String bucket, String objectKey) {}
 
     String bucket();
 

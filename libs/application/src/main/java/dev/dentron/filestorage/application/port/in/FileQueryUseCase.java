@@ -4,16 +4,10 @@ import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.domain.FileObject;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public interface FileQueryUseCase {
-
-    FileMetadata getFile(NamespaceContext ns, GetFileRequest request);
-
-    record GetFileRequest(
-            UUID fileId
-    ) {}
-
     record FileMetadata(
             UUID fileId,
             String owner,
@@ -26,5 +20,27 @@ public interface FileQueryUseCase {
             String contentType,
             FileObject.Status status,
             Instant createdAt
-    ) {}
+    ) {
+    }
+
+    ListFilesResult listFiles(NamespaceContext ns, ListFilesRequest request);
+
+    record ListFilesRequest(
+            String cursor,
+            Integer limit
+    ) {
+    }
+
+    record ListFilesResult(
+            List<FileMetadata> items,
+            String nextCursor
+    ) {
+    }
+
+    FileMetadata getFile(NamespaceContext ns, GetFileRequest request);
+
+    record GetFileRequest(
+            UUID fileId
+    ) {
+    }
 }

@@ -1,6 +1,5 @@
 package dev.dentron.worker.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import dev.dentron.filestorage.application.service.PersistenceService;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository;
 import dev.dentron.filestorage.application.port.out.FileObjectRepository.FileView;
@@ -14,6 +13,7 @@ import dev.dentron.filestorage.application.outbox.OutboxMessage;
 import dev.dentron.filestorage.application.outbox.payload.FileDeletedPayload;
 import dev.dentron.filestorage.application.outbox.payload.FileUploadedPayload;
 import dev.dentron.filestorage.common.util.ExceptionUtils;
+import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -34,19 +34,15 @@ import java.io.IOException;
 import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 @Slf4j
 @RequiredArgsConstructor
 @Component
 public class OutboxListener {
-    private final Map<OutboxEventType, EventHandler> EVENT_HANDLERS = Map.of(
-            OutboxEventType.FILE_UPLOADED, this::handleFileUploaded,
-            OutboxEventType.FILE_DELETED, this::handleFileDeleted
-    );
-
     private final ObjectStoragePort storage;
     private final PersistenceService persistenceService;
     private final UploadSessionRepository sessionRepository;
@@ -54,24 +50,55 @@ public class OutboxListener {
     private final OutboxFailMarker failMarker;
     private final Tika tika;
     private final ObjectMapper mapper;
+    private final ExecutorService executor;
 
-    @KafkaListener(groupId = "1", topics = "file-storage-outbox", containerFactory = "outbox-container-factory")
-    public void listen(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+    @KafkaListener(
+            groupId = "${app.kafka.listener.group-id}",
+            topics = "${app.kafka.topics.file-uploaded.name}",
+            containerFactory = "outbox-container-factory",
+            errorHandler = "log-listener-error-handler"
+    )
+    public CompletableFuture<Void> listenUploaded(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) {
         log.debug("Received outbox message {}", message);
-        OutboxEventType type = message.eventType();
-        EventHandler handler = EVENT_HANDLERS.get(type);
-
-        if (handler == null) {
-            log.warn("Unknown event type: {}", type);
-            throw new IllegalStateException("Unsupported event type: " + type);
+        if (message.eventType() != OutboxEventType.FILE_UPLOADED) {
+            throw new IllegalStateException("Expected event type FILE_UPLOADED but got " + message.eventType());
         }
 
-        handler.handle(message, key);
-        log.debug("Handled outbox message with id: {}", message.eventId());
+        return CompletableFuture.runAsync(() -> {
+            handleFileUploaded(message, key);
+        }, executor);
+    }
+
+    @KafkaListener(
+            groupId = "${app.kafka.listener.group-id}",
+            topics = "${app.kafka.topics.file-deleted.name}",
+            containerFactory = "outbox-container-factory",
+            errorHandler = "log-listener-error-handler"
+    )
+    public CompletableFuture<Void> listenDeleted(@Payload OutboxMessage message, @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+        log.debug("Received outbox message {}", message);
+        if (message.eventType() != OutboxEventType.FILE_DELETED) {
+            throw new IllegalStateException("Expected event type FILE_DELETED but got " + message.eventType());
+        }
+
+        return handleFileDeleted(message, key)
+                .whenComplete((v, e) -> {
+                    if (e != null) {
+                        log.error("Error while handling outbox message {}", message, e);
+                    }
+                });
     }
 
     // TODO batch listener
-    @KafkaListener(groupId = "1", topics = "file-storage-outbox-dlt")
+    @KafkaListener(
+            groupId = "${app.kafka.listener.group-id}",
+            topics = {
+                    "${app.kafka.topics.file-uploaded.dlt-name}",
+                    "${app.kafka.topics.file-deleted.dlt-name}"
+            },
+            containerFactory = "outbox-container-factory",
+            errorHandler = "log-listener-error-handler"
+    )
     public void listenDlt(@Payload List<OutboxMessage> messages) {
         List<UUID> ids = messages.stream().map(OutboxMessage::eventId).toList();
         failMarker.markFailed(ids);
@@ -85,6 +112,11 @@ public class OutboxListener {
             log.error("File not found with id {}; outbox {}", payload.fileId(), message);
             return new EntityNotFoundException("File not found with id: " + payload.fileId());
         });
+
+        if (fileView.getStatus() == FileObject.Status.DELETED) {
+            log.debug("Skip FILE_UPLOADED for fileId={}, file already transitioned to incompatible state", fileView.getId());
+            return;
+        }
 
         String expectedContentType = sessionRepository
                 .findByFileId(payload.fileId())
@@ -157,22 +189,25 @@ public class OutboxListener {
         return tika.getDetector().detect(input, metadata);
     }
 
-    private void handleFileDeleted(OutboxMessage message, String key) {
+    private CompletableFuture<Void> handleFileDeleted(OutboxMessage message, String key) {
         FileDeletedPayload payload = mapper.readValue(message.payloadJson(), FileDeletedPayload.class);
         Objects.requireNonNull(payload.bucket(), "bucket cannot be null");
         Objects.requireNonNull(payload.objectKey(), "objectKey cannot be null");
 
-        var request = new ObjectStoragePort.AbortMultipartUploadRequest(payload.bucket(), payload.objectKey(), payload.uploadId());
-        storage.abortMultipartUploadAsync(request).whenComplete((r, t) -> {
+        var abortRequest = new ObjectStoragePort.AbortMultipartUploadRequest(payload.bucket(), payload.objectKey(), payload.uploadId());
+        var abortFuture = storage.abortMultipartUploadAsync(abortRequest).whenComplete((r, t) -> {
             if (t != null) {
                 log.warn("Abort multipart upload failed for file {}", payload.objectKey(), t);
             }
-
         });
-    }
 
-    @FunctionalInterface
-    private interface EventHandler {
-        void handle(OutboxMessage message, String key);
+        var deleteRequest = new ObjectStoragePort.DeleteObjectRequest(payload.bucket(), payload.objectKey());
+        var deleteFuture = storage.deleteObjectAsync(deleteRequest).whenComplete((r, t) -> {
+            if (t != null) {
+                log.warn("Delete multipart upload failed for file {}", payload.objectKey(), t);
+            }
+        });
+
+        return CompletableFuture.allOf(abortFuture, deleteFuture);
     }
 }

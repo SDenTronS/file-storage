@@ -3,6 +3,7 @@ package dev.dentron.filestorage.application.port.in;
 import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.application.port.PresignedUrl;
 
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -10,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 public interface CreateUploadUseCase {
 
     CompletableFuture<CreateUploadResult> createMultipartUploadSessionAsync(NamespaceContext ns, CreateUploadRequest request);
+
+    CompletableFuture<DirectUploadResult> uploadFile(NamespaceContext ns, DirectUploadRequest request);
 
     record CreateUploadRequest(
             String prefix,
@@ -24,6 +27,19 @@ public interface CreateUploadUseCase {
             String multipartUploadId,
             UUID fileId,
             Instant expiresAt
+    ) {}
+
+    record DirectUploadRequest(
+            String prefix,
+            String originalFileName,
+            String expectedContentType,
+            long sizeBytes,
+            InputStream inputStream
+    ) {}
+
+    record DirectUploadResult(
+            UUID fileId,
+            String etag
     ) {}
 
     PresignedUrl presignMultipartPut(NamespaceContext ns, PresignedMultipartPutRequest request);

@@ -1,6 +1,6 @@
 package dev.dentron.filestorage.api;
 
-import dev.dentron.filestorage.KafkaConfig;
+import dev.dentron.filestorage.messagingkafka.KafkaConfig;
 import dev.dentron.filestorage.api.config.DevNoSecurityConfig;
 import dev.dentron.filestorage.api.dto.upload.FileMetadataResponseDTO;
 import dev.dentron.filestorage.api.dto.upload.PresignedUrlResponseDTO;

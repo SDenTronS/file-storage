@@ -7,10 +7,13 @@ import dev.dentron.filestorage.persistence.jpa.repository.FileJpaRepository;
 import dev.dentron.filestorage.persistence.mapper.FileObjectMapper;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
 
 @RequiredArgsConstructor
@@ -57,8 +60,46 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
     }
 
     @Override
+    public List<FileObject> findAllByOwnerOrderByCreatedAtDesc(String owner) {
+        return repository.findAllByOwnerOrderByCreatedAtDesc(owner).stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<FileObject> findAllByIds(List<UUID> ids) {
         return repository.findAllById(ids).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public FileObjectScrollPage scrollByOwner(String owner, FileObjectScrollCursor cursor, int limit) {
+        Window<FileEntity> window = repository.findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(
+                owner,
+                toScrollPosition(cursor),
+                Limit.of(limit)
+        );
+
+        List<FileObject> items = window.stream()
+                .map(mapper::toDomain)
+                .toList();
+
+        FileObjectScrollCursor nextCursor = null;
+        if (window.hasNext() && !items.isEmpty()) {
+            nextCursor = toCursor(items.getLast());
+        }
+
+        return new FileObjectScrollPage(items, nextCursor);
+    }
+
+    @Override
+    public List<FileObject> findLimitByOwner(String owner, long offset, int limit) {
+        OffsetScrollPosition scrollPosition = toScrollPosition(offset);
+
+        return repository
+                .findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(owner, scrollPosition, Limit.of(limit))
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
     }
 
     @Override
@@ -70,11 +111,13 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
                         FileObject.Status.UPLOADED.name()
                 ),
                 etag,
+                null,
+                null,
                 null);
     }
 
     @Override
-    public Optional<FileView> tryMarkReady(UUID fileId) {
+    public Optional<FileView> tryMarkReady(UUID fileId, String contentType, Long size) {
         return repository.tryTransition(fileId,
                 FileObject.Status.READY.name(),
                 List.of(
@@ -82,6 +125,8 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
                         FileObject.Status.READY.name()
                 ),
                 null,
+                contentType,
+                size,
                 null);
     }
 
@@ -95,6 +140,8 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
                         FileObject.Status.QUARANTINED.name(),
                         FileObject.Status.REJECTED.name()
                 ),
+                null,
+                null,
                 null,
                 null);
     }
@@ -112,6 +159,37 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
                         FileObject.Status.DELETED.name()
                 ),
                 null,
+                null,
+                null,
                 deletedAt);
+    }
+
+    private OffsetScrollPosition toScrollPosition(Long offset) {
+        if (offset == 0) {
+            return ScrollPosition.offset();
+        }
+
+        return ScrollPosition.offset(offset - 1);
+    }
+
+    private KeysetScrollPosition toScrollPosition(FileObjectScrollCursor cursor) {
+        if (cursor == null) {
+            return ScrollPosition.keyset();
+        }
+
+        Map<String, Object> keys = new LinkedHashMap<>();
+        keys.put("createdAt", Instant.parse(cursor.createdAt()));
+        keys.put("originalName", cursor.originalName());
+        keys.put("id", cursor.id());
+
+        return ScrollPosition.of(keys, ScrollPosition.Direction.FORWARD);
+    }
+
+    private FileObjectScrollCursor toCursor(FileObject file) {
+        return new FileObjectScrollCursor(
+                file.getCreatedAt().toString(),
+                file.getOriginalName(),
+                file.getId()
+        );
     }
 }

@@ -1,33 +1,26 @@
 package dev.dentron.filestorage.api;
 
-import dev.dentron.filestorage.api.security.jwt.JwtTokenVerifier;
+import dev.dentron.filestorage.application.exception.ConflictException;
 import dev.dentron.filestorage.application.outbox.OutboxEventType;
 import dev.dentron.filestorage.application.outbox.OutboxMessage;
 import dev.dentron.filestorage.application.port.FilePart;
 import dev.dentron.filestorage.application.port.NamespaceContext;
+import dev.dentron.filestorage.application.port.in.AbortUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CompleteUploadUseCase;
 import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
 import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
-import dev.dentron.filestorage.application.port.out.FileObjectRepository;
-import dev.dentron.filestorage.application.port.out.ObjectStoragePort;
-import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
-import dev.dentron.filestorage.application.port.out.outbox.OutboxPort;
 import dev.dentron.filestorage.application.service.FileService;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
 import dev.dentron.filestorage.domain.exception.UploadSessionException;
 import jakarta.persistence.EntityNotFoundException;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -35,57 +28,37 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest(classes = ApiApplication.class, properties = {
         "app.minio.enabled=false",
-        "app.security.enabled=false"
+        "app.security.enabled=false",
+        "app.kafka.enabled=false"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
-public class FileServiceIT {
-
-    @MockitoBean private ObjectStoragePort storagePort;
-    @MockitoBean private OutboxPort outboxPort;
-
+class FileCommandServiceIT extends AbstractFileStorageITSupport {
     @Autowired
     private FileService fileService;
-
-    @Autowired
-    private FileObjectRepository fileRepository;
-
-    @Autowired
-    private UploadSessionRepository sessionRepository;
 
     @Container
     @ServiceConnection
     private static final PostgreSQLContainer postgresContainer = new PostgreSQLContainer(
-            DockerImageName.parse( "postgres:17.5")
+            DockerImageName.parse("postgres:17.5")
     );
 
-    @BeforeEach
-    void setUp() {
-        clearInvocations(outboxPort);
-        when(storagePort.completeMultipartUploadAsync(any())).thenReturn(CompletableFuture.completedFuture("e-tag"));
-        when(storagePort.abortMultipartUploadAsync(any())).thenReturn(CompletableFuture.completedFuture(ObjectStoragePort.AbortResult.ABORTED));
-
-        var multipartCreateAnswer = new ObjectStoragePort.MultipartUpload("uploadId");
-        when(storagePort.createMultipartUploadAsync(any())).thenReturn(CompletableFuture.completedFuture(multipartCreateAnswer));
-    }
-
     @Test
-    void testCompleteAfterDeleted() {
+    void completeAfterDeletedStopsWithoutStorageCall() {
         NamespaceContext ns = new NamespaceContext("svc-a");
         UploadFixture fixture = createSessionAndFile("svc-a");
 
-        fileService.deleteFile(ns, new DeleteFileUseCase.DeleteFileRequest(fixture.fileId()));
+        fileService.abortUpload(ns, new AbortUploadUseCase.AbortUploadRequest(fixture.sessionId()));
 
         FileObject file = fileRepository.findById(fixture.fileId()).orElseThrow();
         assertThat(file.getStatus()).isEqualTo(FileObject.Status.DELETED);
@@ -95,7 +68,6 @@ public class FileServiceIT {
         assertThat(session.getStatus()).isEqualTo(UploadSession.Status.ABORTED);
 
         verify(outboxPort).enqueueOutboxEvent(any());
-
         clearInvocations(outboxPort, storagePort);
 
         var request = new CompleteUploadUseCase.CompleteUploadRequest(
@@ -111,7 +83,7 @@ public class FileServiceIT {
     }
 
     @Test
-    void testCompleteMultipartUploadMarksUploadedAndEnqueuesOutbox() {
+    void completeMultipartUploadMarksUploadedAndEnqueuesOutbox() {
         NamespaceContext ns = new NamespaceContext("svc-a");
         UploadFixture fixture = createSessionAndFile("svc-a");
 
@@ -134,17 +106,16 @@ public class FileServiceIT {
 
         ArgumentCaptor<OutboxMessage> captor = ArgumentCaptor.forClass(OutboxMessage.class);
         verify(outboxPort).enqueueOutboxEvent(captor.capture());
-        OutboxMessage message = captor.getValue();
-        assertThat(message.eventType()).isEqualTo(OutboxEventType.FILE_UPLOADED);
-        assertThat(message.aggregateId()).isEqualTo(fixture.fileId().toString());
+        assertThat(captor.getValue().eventType()).isEqualTo(OutboxEventType.FILE_UPLOADED);
+        assertThat(captor.getValue().aggregateId()).isEqualTo(fixture.fileId().toString());
     }
 
     @Test
-    void testDeleteFileAbortsSessionAndEnqueuesOutbox() {
+    void abortUploadMarksFileDeletedAndEnqueuesOutbox() {
         NamespaceContext ns = new NamespaceContext("svc-a");
         UploadFixture fixture = createSessionAndFile("svc-a");
 
-        fileService.deleteFile(ns, new DeleteFileUseCase.DeleteFileRequest(fixture.fileId()));
+        fileService.abortUpload(ns, new AbortUploadUseCase.AbortUploadRequest(fixture.sessionId()));
 
         FileObject file = fileRepository.findById(fixture.fileId()).orElseThrow();
         assertThat(file.getStatus()).isEqualTo(FileObject.Status.DELETED);
@@ -155,28 +126,26 @@ public class FileServiceIT {
 
         ArgumentCaptor<OutboxMessage> captor = ArgumentCaptor.forClass(OutboxMessage.class);
         verify(outboxPort).enqueueOutboxEvent(captor.capture());
-        OutboxMessage message = captor.getValue();
-        assertThat(message.eventType()).isEqualTo(OutboxEventType.FILE_DELETED);
-        assertThat(message.aggregateId()).isEqualTo(fixture.fileId().toString());
-        assertThat(message.payloadJson()).contains("bucket-main", "uploads/" + fixture.fileId());
+        assertThat(captor.getValue().eventType()).isEqualTo(OutboxEventType.FILE_DELETED);
+        assertThat(captor.getValue().aggregateId()).isEqualTo(fixture.fileId().toString());
+        assertThat(captor.getValue().payloadJson()).contains("bucket-main", "uploads/" + fixture.fileId());
     }
 
     @Test
-    void testDeleteFileForbiddenForWrongOwner() {
+    void abortUploadRejectsWrongOwner() {
         UploadFixture fixture = createSessionAndFile("svc-a");
         NamespaceContext otherNs = new NamespaceContext("svc-b");
 
-        assertThatThrownBy(() -> fileService.deleteFile(otherNs, new DeleteFileUseCase.DeleteFileRequest(fixture.fileId())))
+        assertThatThrownBy(() -> fileService.abortUpload(otherNs, new AbortUploadUseCase.AbortUploadRequest(fixture.sessionId())))
                 .isInstanceOf(AccessDeniedException.class);
 
         FileObject file = fileRepository.findById(fixture.fileId()).orElseThrow();
         assertThat(file.getStatus()).isEqualTo(FileObject.Status.UPLOADING);
-
         verify(outboxPort, never()).enqueueOutboxEvent(any());
     }
 
     @Test
-    void testPresignPutThrowsWhenSessionExpired() {
+    void presignPutThrowsWhenSessionExpired() {
         NamespaceContext ns = new NamespaceContext("svc-a");
         UploadFixture fixture = createSessionAndFile("svc-a", Instant.now().minusSeconds(30));
 
@@ -187,36 +156,45 @@ public class FileServiceIT {
                         assertThat(ex.reason()).isEqualTo(UploadSessionException.Reason.EXPIRED));
     }
 
-    private UploadFixture createSessionAndFile(String ownerService) {
-        return createSessionAndFile(ownerService, Instant.now().plusSeconds(3600));
+    @Test
+    void deleteFileRejectsUploadingFile() {
+        NamespaceContext ns = new NamespaceContext("svc-a");
+        UploadFixture fixture = createSessionAndFile("svc-a");
+
+        assertThatThrownBy(() -> fileService.deleteFile(ns, new DeleteFileUseCase.DeleteFileRequest(fixture.fileId())))
+                .isInstanceOfSatisfying(ConflictException.class, ex ->
+                        assertThat(ex.code()).isEqualTo("UPLOAD_IN_PROGRESS"));
+
+        FileObject file = fileRepository.findById(fixture.fileId()).orElseThrow();
+        assertThat(file.getStatus()).isEqualTo(FileObject.Status.UPLOADING);
+
+        UploadSession session = sessionRepository.findById(fixture.sessionId()).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo(UploadSession.Status.CREATED);
+        verify(outboxPort, never()).enqueueOutboxEvent(any());
     }
 
-    private UploadFixture createSessionAndFile(String ownerService, Instant expiresAt) {
-        UUID fileId = UUID.randomUUID();
-        UUID sessionId = UUID.randomUUID();
-        String multipartUploadId = "upload-" + UUID.randomUUID();
+    @Test
+    void deleteFileMarksCompletedFileDeleted() {
+        NamespaceContext ns = new NamespaceContext("svc-a");
+        UploadFixture fixture = createSessionAndFile("svc-a");
 
-        FileObject file = new FileObject(
-                fileId,
-                ownerService,
-                "uploads/" + fileId,
-                "test.bin",
-                "bucket-main"
-        );
-        fileRepository.save(file);
+        fileService.completeMultipartUpload(ns, new CompleteUploadUseCase.CompleteUploadRequest(
+                fixture.multipartUploadId(),
+                List.of(new FilePart("etag-1", 1))
+        )).join();
+        clearInvocations(outboxPort);
 
-        UploadSession session = new UploadSession(
-                sessionId,
-                multipartUploadId,
-                fileId,
-                expiresAt,
-                MediaType.APPLICATION_OCTET_STREAM_VALUE
-        );
-        sessionRepository.save(session);
+        fileService.deleteFile(ns, new DeleteFileUseCase.DeleteFileRequest(fixture.fileId()));
 
-        return new UploadFixture(fileId, sessionId, multipartUploadId);
+        FileObject file = fileRepository.findById(fixture.fileId()).orElseThrow();
+        assertThat(file.getStatus()).isEqualTo(FileObject.Status.DELETED);
+        assertThat(file.getDeletedAt()).isNotNull();
+
+        UploadSession session = sessionRepository.findById(fixture.sessionId()).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo(UploadSession.Status.COMPLETED);
+
+        ArgumentCaptor<OutboxMessage> captor = ArgumentCaptor.forClass(OutboxMessage.class);
+        verify(outboxPort).enqueueOutboxEvent(captor.capture());
+        assertThat(captor.getValue().eventType()).isEqualTo(OutboxEventType.FILE_DELETED);
     }
-
-    private record UploadFixture(UUID fileId, UUID sessionId, String multipartUploadId) {}
-
 }
