@@ -69,6 +69,21 @@ public class SessionPersistenceTest {
 
     @Test
     @Transactional
+    public void testTryMarkAbortingFromCreatedShouldTransition() {
+        UploadSession session = createNewSession();
+
+        var sessionOpt = uploadSessionRepository.tryMarkAborting(session.getId());
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(sessionOpt).isPresent();
+
+        var persistedSessionOpt = uploadSessionRepository.findById(session.getId());
+        assertThat(persistedSessionOpt).isPresent();
+        assertThat(persistedSessionOpt.get().getStatus()).isEqualTo(UploadSession.Status.ABORTING);
+    }
+
+    @Test
+    @Transactional
     public void testTryMarkCompletedFromCreatedShouldNotTransition() {
         UploadSession session = createNewSession();
 

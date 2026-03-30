@@ -25,6 +25,7 @@ public class UploadSession {
         COMPLETING,
         COMPLETED,
         EXPIRED,
+        ABORTING,
         ABORTED
     }
 
@@ -54,7 +55,7 @@ public class UploadSession {
         Objects.requireNonNull(now, "now");
         ensureNotExpired(now);
 
-        if (status == Status.COMPLETED || status == Status.COMPLETING || status == Status.ABORTED) {
+        if (status == Status.COMPLETED || status == Status.COMPLETING || status == Status.ABORTING || status == Status.ABORTED) {
             throw new UploadSessionException(UploadSessionException.Reason.INVALID_STATE, "Session unavailable");
         }
     }
@@ -62,7 +63,7 @@ public class UploadSession {
     public void abort(Instant now) {
         Objects.requireNonNull(now, "now");
 
-        if (status == Status.ABORTED) return;
+        if (status == Status.ABORTING || status == Status.ABORTED) return;
 
         if (status == Status.COMPLETED || status == Status.COMPLETING) {
             fail(UploadSessionException.Reason.ALREADY_COMPLETED, "Upload session already completed");
@@ -74,7 +75,7 @@ public class UploadSession {
     public void ensureNotExpired(Instant now) {
         Objects.requireNonNull(now, "now");
 
-        if (status == Status.COMPLETED || status == Status.COMPLETING) {
+        if (status == Status.COMPLETED || status == Status.COMPLETING || status == Status.ABORTING || status == Status.ABORTED) {
             return;
         }
 
