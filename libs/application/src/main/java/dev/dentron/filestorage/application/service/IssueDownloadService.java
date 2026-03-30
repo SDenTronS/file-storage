@@ -30,6 +30,7 @@ public class IssueDownloadService implements IssueDownloadUseCase {
     @Override
     public PresignedUrl presignGet(NamespaceContext ns, PresignedGetRequest request) {
         FileObject file = fileAccessService.getByIdOwnedBy(request.fileId(), ns);
+        file.ensureAccessible();
 
         Duration ttl = properties.presign().getTtl();
         Instant now = Instant.now();

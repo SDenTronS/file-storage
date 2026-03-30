@@ -76,40 +76,25 @@ class FileControllerTest extends AbstractControllerWebMvcTestSupport {
 
     @Test
     void getFilesReturnsReducedMetadataList() {
-        var firstFileId = UUID.randomUUID();
-        var secondFileId = UUID.randomUUID();
-        var firstCreatedAt = Instant.parse("2000-01-02T00:00:00Z");
-        var secondCreatedAt = Instant.parse("2000-01-01T00:00:00Z");
+        var fileId = UUID.randomUUID();
+        var createdAt = Instant.parse("2000-01-02T00:00:00Z");
         var nextCursor = "bmV4dC1jdXJzb3I";
 
         when(fileQueryUseCase.listFiles(any(), any()))
                 .thenReturn(new FileQueryUseCase.ListFilesResult(
                         List.of(
                                 new FileQueryUseCase.FileMetadata(
-                                        firstFileId,
+                                        fileId,
                                         SERVICE_ID,
                                         "bucket-main",
-                                        "uploads/" + firstFileId,
+                                        "uploads/" + fileId,
                                         "document.txt",
                                         128L,
                                         "sha-256",
                                         "etag-123",
                                         MediaType.TEXT_PLAIN_VALUE,
                                         dev.dentron.filestorage.domain.FileObject.Status.READY,
-                                        firstCreatedAt
-                                ),
-                                new FileQueryUseCase.FileMetadata(
-                                        secondFileId,
-                                        SERVICE_ID,
-                                        "bucket-main",
-                                        "uploads/" + secondFileId,
-                                        "archive.zip",
-                                        512L,
-                                        MediaType.APPLICATION_OCTET_STREAM_VALUE,
-                                        "etag-456",
-                                        MediaType.APPLICATION_OCTET_STREAM_VALUE,
-                                        dev.dentron.filestorage.domain.FileObject.Status.DELETED,
-                                        secondCreatedAt
+                                        createdAt
                                 )
                         ),
                         nextCursor
@@ -124,14 +109,10 @@ class FileControllerTest extends AbstractControllerWebMvcTestSupport {
                 .hasContentType(MediaType.APPLICATION_JSON)
                 .bodyJson();
 
-        bodyJson.extractingPath("$.items[0].fileId").isEqualTo(firstFileId.toString());
+        bodyJson.extractingPath("$.items[0].fileId").isEqualTo(fileId.toString());
         bodyJson.extractingPath("$.items[0].originalName").isEqualTo("document.txt");
         bodyJson.extractingPath("$.items[0].status").isEqualTo("READY");
-        bodyJson.extractingPath("$.items[0].createdAt").isEqualTo(firstCreatedAt.toString());
-        bodyJson.extractingPath("$.items[1].fileId").isEqualTo(secondFileId.toString());
-        bodyJson.extractingPath("$.items[1].originalName").isEqualTo("archive.zip");
-        bodyJson.extractingPath("$.items[1].status").isEqualTo("DELETED");
-        bodyJson.extractingPath("$.items[1].createdAt").isEqualTo(secondCreatedAt.toString());
+        bodyJson.extractingPath("$.items[0].createdAt").isEqualTo(createdAt.toString());
         bodyJson.extractingPath("$.nextCursor").isEqualTo(nextCursor);
 
         var nsCaptor = ArgumentCaptor.forClass(NamespaceContext.class);

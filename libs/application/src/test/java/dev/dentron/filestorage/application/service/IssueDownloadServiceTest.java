@@ -7,6 +7,7 @@ import dev.dentron.filestorage.application.port.out.ObjectStoragePort;
 import dev.dentron.filestorage.common.util.DownloadTokenUtils;
 import dev.dentron.filestorage.domain.DownloadToken;
 import dev.dentron.filestorage.domain.FileObject;
+import dev.dentron.filestorage.domain.exception.FileNotAccessibleException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -79,6 +81,21 @@ class IssueDownloadServiceTest {
         assertThat(result.expiresAt())
                 .isAfterOrEqualTo(before.plus(durations().presign().getTtl()))
                 .isBeforeOrEqualTo(after.plus(durations().presign().getTtl()));
+    }
+
+    @Test
+    void presignGetRejectsFileThatIsNotReady() {
+        UUID fileId = UUID.randomUUID();
+        FileObject file = file(fileId, "svc-a", FileObject.Status.UPLOADED);
+        when(fileRepository.findById(fileId)).thenReturn(Optional.of(file));
+
+        assertThatThrownBy(() -> service.presignGet(
+                new NamespaceContext("svc-a"),
+                new dev.dentron.filestorage.application.port.in.IssueDownloadUseCase.PresignedGetRequest(fileId)
+        ))
+                .isInstanceOfSatisfying(FileNotAccessibleException.class, ex ->
+                        assertThat(ex.reason()).isEqualTo(FileNotAccessibleException.Reason.NOT_READY)
+                );
     }
 
     @Test
@@ -152,6 +169,10 @@ class IssueDownloadServiceTest {
     }
 
     private static FileObject readyFile(UUID fileId, String owner) {
+        return file(fileId, owner, FileObject.Status.READY);
+    }
+
+    private static FileObject file(UUID fileId, String owner, FileObject.Status status) {
         return FileObject.restore(
                 fileId,
                 "bucket-main",
@@ -162,7 +183,7 @@ class IssueDownloadServiceTest {
                 "sha-256",
                 "etag-1",
                 "application/octet-stream",
-                FileObject.Status.READY,
+                status,
                 Instant.now().minusSeconds(120),
                 null
         );

@@ -119,7 +119,9 @@ public class FilePersistenceTest {
         FileObject alpha = createNewFile("service-a", "alpha.txt");
         FileObject beta = createNewFile("service-a", "beta.txt");
         FileObject gamma = createNewFile("service-a", "gamma.txt");
+        FileObject delta = createNewFile("service-a", "delta.txt");
         createNewFile("service-b", "foreign.txt");
+        fileRepository.tryMarkDeleted(beta.getId(), Instant.now());
 
         entityManager.flush();
         entityManager.clear();
@@ -127,13 +129,13 @@ public class FilePersistenceTest {
         var firstPage = fileRepository.scrollByOwner("service-a", null, 2);
 
         assertThat(firstPage.items()).extracting(FileObject::getId)
-                .containsExactly(alpha.getId(), beta.getId());
+                .containsExactly(alpha.getId(), gamma.getId());
         assertThat(firstPage.nextCursor()).isNotNull();
 
         var secondPage = fileRepository.scrollByOwner("service-a", firstPage.nextCursor(), 2);
 
         assertThat(secondPage.items()).extracting(FileObject::getId)
-                .containsExactly(gamma.getId());
+                .containsExactly(delta.getId());
         assertThat(secondPage.nextCursor()).isNull();
     }
 
@@ -144,6 +146,8 @@ public class FilePersistenceTest {
         FileObject alpha = createNewFile(numUuid(1), "service-a", "alpha.txt");
         FileObject beta = createNewFile(numUuid(2),"service-a", "beta.txt");
         FileObject gamma = createNewFile(numUuid(3), "service-a", "gamma.txt");
+        FileObject delta = createNewFile(numUuid(4), "service-a", "delta.txt");
+        fileRepository.tryMarkDeleted(beta.getId(), Instant.now());
 
         entityManager.flush();
         entityManager.clear();
@@ -151,7 +155,7 @@ public class FilePersistenceTest {
         var page = fileRepository.findLimitByOwner("service-a", 1L, 2);
 
         assertThat(page).extracting(FileObject::getId)
-                .containsExactly(beta.getId(), gamma.getId());
+                .containsExactly(gamma.getId(), delta.getId());
         assertThat(page).extracting(FileObject::getOwner)
                 .containsOnly("service-a");
     }

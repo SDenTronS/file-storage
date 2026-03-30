@@ -61,7 +61,7 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
 
     @Override
     public List<FileObject> findAllByOwnerOrderByCreatedAtDesc(String owner) {
-        return repository.findAllByOwnerOrderByCreatedAtDesc(owner).stream()
+        return repository.findAllByOwnerAndStatusNotOrderByCreatedAtDesc(owner, FileObject.Status.DELETED).stream()
                 .map(mapper::toDomain)
                 .toList();
     }
@@ -73,8 +73,9 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
 
     @Override
     public FileObjectScrollPage scrollByOwner(String owner, FileObjectScrollCursor cursor, int limit) {
-        Window<FileEntity> window = repository.findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(
+        Window<FileEntity> window = repository.findByOwnerAndStatusNotOrderByCreatedAtAscOriginalNameAscIdAsc(
                 owner,
+                FileObject.Status.DELETED,
                 toScrollPosition(cursor),
                 Limit.of(limit)
         );
@@ -96,7 +97,12 @@ public class FileObjectPersistenceAdapter implements FileObjectRepository {
         OffsetScrollPosition scrollPosition = toScrollPosition(offset);
 
         return repository
-                .findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(owner, scrollPosition, Limit.of(limit))
+                .findByOwnerAndStatusNotOrderByCreatedAtAscOriginalNameAscIdAsc(
+                        owner,
+                        FileObject.Status.DELETED,
+                        scrollPosition,
+                        Limit.of(limit)
+                )
                 .stream()
                 .map(mapper::toDomain)
                 .toList();

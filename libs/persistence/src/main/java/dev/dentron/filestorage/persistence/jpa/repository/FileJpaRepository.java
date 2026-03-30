@@ -1,6 +1,7 @@
 package dev.dentron.filestorage.persistence.jpa.repository;
 
 import dev.dentron.filestorage.application.port.out.FileObjectRepository;
+import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.persistence.jpa.entity.FileEntity;
 
 import java.time.Instant;
@@ -24,13 +25,23 @@ public interface FileJpaRepository extends JpaRepository<FileEntity, UUID> {
 
     Optional<FileObjectRepository.FileView> findViewById(@Param("fileId") UUID fileId);
 
-    List<FileEntity> findAllByOwnerOrderByCreatedAtDesc(String owner);
+    List<FileEntity> findAllByOwnerAndStatusNotOrderByCreatedAtDesc(String owner, FileObject.Status status);
 
     List<FileEntity> findAllByIdIn(List<UUID> ids);
 
-    Window<FileEntity> findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(String owner, KeysetScrollPosition scrollPosition, Limit limit);
+    Window<FileEntity> findByOwnerAndStatusNotOrderByCreatedAtAscOriginalNameAscIdAsc(
+            String owner,
+            FileObject.Status status,
+            KeysetScrollPosition scrollPosition,
+            Limit limit
+    );
 
-    List<FileEntity> findByOwnerOrderByCreatedAtAscOriginalNameAscIdAsc(String owner, OffsetScrollPosition scrollPosition, Limit limit);
+    List<FileEntity> findByOwnerAndStatusNotOrderByCreatedAtAscOriginalNameAscIdAsc(
+            String owner,
+            FileObject.Status status,
+            OffsetScrollPosition scrollPosition,
+            Limit limit
+    );
 
     @Query(value = "" +
             "UPDATE file_object " +

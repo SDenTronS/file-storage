@@ -3,7 +3,6 @@ package dev.dentron.filestorage.api;
 import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.application.port.in.AbortUploadUseCase;
 import dev.dentron.filestorage.application.port.in.FileQueryUseCase;
-import dev.dentron.filestorage.domain.FileObject;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -41,7 +40,7 @@ class FileQueryServiceIT extends AbstractFileStorageITSupport {
     private FileQueryUseCase fileQueryUseCase;
 
     @Test
-    void listFilesReturnsOnlyOwnedFiles() {
+    void listFilesReturnsOnlyNonDeletedOwnedFiles() {
         NamespaceContext ns = new NamespaceContext("svc-a");
         UploadFixture uploadingFixture = createSessionAndFile("svc-a");
         UploadFixture deletedFixture = createSessionAndFile("svc-a");
@@ -52,17 +51,14 @@ class FileQueryServiceIT extends AbstractFileStorageITSupport {
         var page = fileQueryUseCase.listFiles(ns, new FileQueryUseCase.ListFilesRequest(null, 10));
         List<FileQueryUseCase.FileMetadata> files = page.items();
 
-        assertThat(files).hasSize(2);
+        assertThat(files).hasSize(1);
         assertThat(page.nextCursor()).isNull();
         assertThat(files).extracting(FileQueryUseCase.FileMetadata::fileId)
-                .containsExactlyInAnyOrder(uploadingFixture.fileId(), deletedFixture.fileId());
+                .containsExactly(uploadingFixture.fileId());
         assertThat(files).extracting(FileQueryUseCase.FileMetadata::owner)
                 .containsOnly("svc-a");
-        assertThat(files).filteredOn(file -> file.fileId().equals(deletedFixture.fileId()))
-                .singleElement()
-                .extracting(FileQueryUseCase.FileMetadata::status)
-                .isEqualTo(FileObject.Status.DELETED);
         assertThat(files).extracting(FileQueryUseCase.FileMetadata::fileId)
+                .doesNotContain(deletedFixture.fileId())
                 .doesNotContain(foreignFixture.fileId());
     }
 

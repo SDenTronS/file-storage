@@ -3,8 +3,10 @@ spring:
     name: api
   servlet:
     multipart:
-      max-file-size: 100MB
-      max-request-size: 105MB
+      location: "${APP_DIRECT_UPLOAD_TEMP_DIR:${java.io.tmpdir}}"
+      file-size-threshold: "${APP_DIRECT_UPLOAD_MEMORY_THRESHOLD:10MB}"
+      max-file-size: "${APP_DIRECT_UPLOAD_MAX_FILE_SIZE:100MB}"
+      max-request-size: "${APP_DIRECT_UPLOAD_MAX_REQUEST_SIZE:105MB}"
   datasource:
     url: "jdbc:postgresql://${SPRING_DATASOURCE_HOST:localhost}:${SPRING_DATASOURCE_PORT:5432}/${SPRING_DATASOURCE_DB}"
     username: "${SPRING_DATASOURCE_USERNAME:}"
@@ -20,10 +22,13 @@ spring:
       ddl-auto: none
   kafka:
     producer:
-      batch-size: 100
+      batch-size: 500
     bootstrap-servers: "${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}"
     admin:
       fail-fast: true
+  threads:
+    virtual:
+      enabled: true
 
 minio:
   bucket: "${MINIO_BUCKET:}"
@@ -75,7 +80,7 @@ app:
       max-attempts: "${APP_KAFKA_RETRY_MAX_ATTEMPTS:3}"
   cors:
     actuator:
-      enabled: true
+      enabled: "${ACTUATOR_ENABLED:true}"
       path-pattern: /actuator/**
       allowed-origins:
         - "*"
@@ -93,23 +98,15 @@ app:
       max-age-seconds: 3600
       allow-credentials: false
     internal:
-      enabled: true
-      path-pattern: /**
-      allowed-origins:
-        - "*"
-      allowed-methods:
-        - GET
-        - HEAD
-        - POST
-        - PUT
-        - PATCH
-        - DELETE
-        - OPTIONS
-      allowed-headers:
-        - "*"
-      exposed-headers: []
-      max-age-seconds: 3600
-      allow-credentials: false
+      enabled: "${APP_CORS_INTERNAL_ENABLED:true}"
+      path-pattern: "${APP_CORS_INTERNAL_PATH_PATTERN:/**}"
+      allowed-origins: "${APP_CORS_INTERNAL_ALLOWED_ORIGINS:*}"
+      allowed-origin-patterns: "${APP_CORS_INTERNAL_ALLOWED_ORIGIN_PATTERNS:}"
+      allowed-methods: "${APP_CORS_INTERNAL_ALLOWED_METHODS:GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS}"
+      allowed-headers: "${APP_CORS_INTERNAL_ALLOWED_HEADERS:*}"
+      exposed-headers: "${APP_CORS_INTERNAL_EXPOSED_HEADERS:}"
+      max-age-seconds: "${APP_CORS_INTERNAL_MAX_AGE_SECONDS:3600}"
+      allow-credentials: "${APP_CORS_INTERNAL_ALLOW_CREDENTIALS:false}"
   security:
     enabled: "${APP_SECURITY_ENABLED:true}"
 

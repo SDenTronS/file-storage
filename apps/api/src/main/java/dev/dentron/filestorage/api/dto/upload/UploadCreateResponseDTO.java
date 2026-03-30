@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.UUID;
 
-//TODO допилить схему
 @Schema(
         name = "UploadCreateResponse",
         description = "Response payload returned after creating a multipart upload session."

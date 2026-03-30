@@ -20,6 +20,9 @@ spring:
     bootstrap-servers: "${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}"
     admin:
       fail-fast: true
+  threads:
+    virtual:
+      enabled: true
 
 minio:
   bucket: "${MINIO_BUCKET:}"

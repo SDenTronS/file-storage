@@ -2,7 +2,9 @@ package dev.dentron.filestorage.application.port.in;
 
 import dev.dentron.filestorage.application.port.NamespaceContext;
 import dev.dentron.filestorage.application.port.PresignedUrl;
+import org.apache.commons.lang3.function.FailableSupplier;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.UUID;
@@ -34,7 +36,7 @@ public interface CreateUploadUseCase {
             String originalFileName,
             String expectedContentType,
             long sizeBytes,
-            InputStream inputStream
+            FailableSupplier<InputStream, IOException> inputStreamSupplier
     ) {}
 
     record DirectUploadResult(

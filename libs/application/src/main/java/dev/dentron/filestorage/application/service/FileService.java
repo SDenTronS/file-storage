@@ -9,6 +9,7 @@ import dev.dentron.filestorage.application.port.in.CreateUploadUseCase;
 import dev.dentron.filestorage.application.port.in.DeleteFileUseCase;
 import dev.dentron.filestorage.application.port.out.ObjectStoragePort;
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
+import dev.dentron.filestorage.common.util.ExceptionUtils;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
 import jakarta.persistence.EntityNotFoundException;
@@ -16,6 +17,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -87,25 +91,40 @@ public class FileService implements AbortUploadUseCase, CompleteUploadUseCase, C
         UUID fileId = UuidCreator.getTimeBased();
         String bucket = storage.bucket();
         String objectKey = objectKey(ns, request.prefix(), fileId);
+        final InputStream inputStream;
+        try {
+            inputStream = request.inputStreamSupplier().get();
+        } catch (IOException e) {
+            return CompletableFuture.failedFuture(new UncheckedIOException("Failed to open upload input stream.", e));
+        }
 
         FileObject file = new FileObject(fileId, ns.serviceId(), objectKey, request.originalFileName(), bucket);
 
         var putRequest = new ObjectStoragePort.PutObjectRequest(
                 bucket,
                 objectKey,
-                request.inputStream(),
+                inputStream,
                 request.sizeBytes(),
                 request.expectedContentType()
         );
 
+        final CompletableFuture<ObjectStoragePort.PutObjectResult> uploadFuture;
+        try {
+            uploadFuture = storage.putObjectAsync(putRequest);
+        } catch (Throwable t) {
+            ExceptionUtils.closeQuietly(inputStream, t);
+            return CompletableFuture.failedFuture(t);
+        }
+
         //TODO тут тоже про базу
 
-        return storage.putObjectAsync(putRequest)
+        return uploadFuture
                 .thenApplyAsync(putObjectResult -> {
                     persistenceService.persistUploaded(file, putObjectResult.etag());
 
                     return new DirectUploadResult(file.getId(), putObjectResult.etag());
-                }, executor);
+                }, executor)
+                .whenComplete((r, t) -> ExceptionUtils.closeQuietly(inputStream, t));
     }
 
     @Override

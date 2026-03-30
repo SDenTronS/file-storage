@@ -24,8 +24,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -86,9 +84,9 @@ public class UploadController {
             @RequestPart("file") MultipartFile file,
             @Parameter(hidden = true)
             @CurrentService ServiceDetails currentService
-    ) throws IOException {
+    ) {
         if (file.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File must not be empty.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File must not be empty.".intern());
         }
 
         NamespaceContext ns = new NamespaceContext(currentService.serviceId());
@@ -96,20 +94,20 @@ public class UploadController {
         String safeFileName = normalizeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
 
-        try (InputStream in = file.getInputStream()) {
-            var directUploadRequest = new CreateUploadUseCase.DirectUploadRequest(
-                    safePath,
-                    safeFileName,
-                    contentType,
-                    file.getSize(),
-                    in
-            );
-            return createUploadUseCase
-                    .uploadFile(ns, directUploadRequest)
-                    .thenApply(result -> ResponseEntity.ok(
-                            new UploadCompleteResponseDTO(result.fileId(), result.etag()))
-                    );
-        }
+        var directUploadRequest = new CreateUploadUseCase.DirectUploadRequest(
+                safePath,
+                safeFileName,
+                contentType,
+                file.getSize(),
+                file::getInputStream
+        );
+
+        return createUploadUseCase
+                .uploadFile(ns, directUploadRequest)
+                .thenApply(result -> ResponseEntity.ok(
+                        new UploadCompleteResponseDTO(result.fileId(), result.etag()))
+                );
+
     }
 
     @Operation(summary = "Presign upload part", description = "Get upload URL for part.")

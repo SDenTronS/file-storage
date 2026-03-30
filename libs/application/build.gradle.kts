@@ -12,6 +12,7 @@ dependencies {
 
     implementation(platform(libs.spring.boot.bom))
     implementation(libs.jackson.databind)
+    implementation(libs.commons.lang3)
     implementation("org.springframework.boot:spring-boot-data-jpa")
     implementation("org.springframework.boot:spring-boot-security")
     implementation(libs.uuid.creator)

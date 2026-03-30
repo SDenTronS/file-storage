@@ -1,57 +1,48 @@
 import http from 'k6/http';
-import { sleep, check, fail } from 'k6';
+import { sleep } from 'k6';
+import {
+  assertResponse,
+  authHeaders,
+  baseUrl,
+  buildBinaryPayload,
+  buildUniqueFileName,
+  buildUniquePath,
+  createConstantArrivalRateOptions,
+  deleteFile,
+  failWithLog,
+  parseJsonBody,
+} from './common.js';
 
-const token = `${__ENV.AUTH_TOKEN}`;
-const base_url = `${__ENV.BASE_URL}`;
-const ZIP_SIGNATURE = new Uint8Array([
-  0x50, 0x4B, 0x03, 0x04,
-]);
+const ZIP_SIGNATURE = [0x50, 0x4B, 0x03, 0x04];
 const ARCHIVE_SIZE_BYTES = 10 * 1024 * 1024;
 const PART_SIZE_BYTES = 5 * 1024 * 1024;
 const ARCHIVE_TOTAL_BYTES = ARCHIVE_SIZE_BYTES + ZIP_SIGNATURE.length;
 
-export const options = {
-  scenarios: {
-    scenario_1: {
-      executor: 'constant-arrival-rate',
-
-      duration: '30s',
-      rate: 400,
-      preAllocatedVUs: 5000,
-      timeUnit: '10s',
-      gracefulStop: '10s',
-    }
-  },
-};
+export const options = createConstantArrivalRateOptions('multipart_upload');
 
 export default function() {
-  let body = {
-    path: '/photos_2025',
-    fileName: 'archive_100mb.zip',
+  const body = {
+    path: buildUniquePath('multipart-upload'),
+    fileName: buildUniqueFileName('archive', 'zip'),
     contentType: 'application/zip',
     overwrite: false,
-    size: ARCHIVE_TOTAL_BYTES
-  }
+    size: ARCHIVE_TOTAL_BYTES,
+  };
 
-  let res = http.post(`${base_url}/v1/uploads`, JSON.stringify(body), {
+  const res = http.post(`${baseUrl}/v1/uploads`, JSON.stringify(body), {
     headers: {
+      ...authHeaders(),
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + token,
-    }
+    },
   });
 
-  let ok = check(res, { "status is 200": (res) => res.status === 200 });
-
-  if (!ok) {
-    failWithLog('createUpload', `requestBody=${JSON.stringify(body)}`, res);
-  }
-
-  let createBody;
-  try {
-    createBody = JSON.parse(res.body);
-  } catch (e) {
-    failWithLog('createUpload', 'invalid JSON', res);
-  }
+  assertResponse(
+    res,
+    { 'status is 200': (response) => response.status === 200 },
+    'createUpload',
+    `requestBody=${JSON.stringify(body)}`,
+  );
+  const createBody = parseJsonBody(res, 'createUpload');
 
   const multipartUploadId = createBody?.multipartUploadId ?? createBody?.uploadId ?? createBody?.id;
   if (!multipartUploadId) {
@@ -66,28 +57,14 @@ export default function() {
 
 function retrievePresignPut(multipartUploadId, partNumber) {
   const requestName = 'retrievePresignPut';
-  const url = `${base_url}/v1/uploads/${multipartUploadId}?partNumber=${partNumber}`;
+  const url = `${baseUrl}/v1/uploads/${multipartUploadId}?partNumber=${partNumber}`;
 
   const res = http.post(url, '', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: authHeaders(),
   });
 
-  const ok = check(res, {
-    'status is 200': (r) => r.status === 200,
-  });
-
-  if (!ok) {
-    failWithLog(requestName, 'invalid status', res);
-  }
-
-  let body;
-  try {
-    body = JSON.parse(res.body);
-  } catch (e) {
-    failWithLog(requestName, 'invalid JSON', res);
-  }
+  assertResponse(res, { 'status is 200': (response) => response.status === 200 }, requestName);
+  const body = parseJsonBody(res, requestName);
 
   if (!body?.url) {
     failWithLog(requestName, 'missing url', res);
@@ -116,30 +93,23 @@ function uploadArchiveInParts(multipartUploadId) {
 }
 
 function buildArchivePart(sizeBytes, includeSignature = false) {
-  const part = new Uint8Array(sizeBytes);
-  if (includeSignature) {
-    part.set(ZIP_SIGNATURE, 0);
-  }
-  return part;
+  return buildBinaryPayload(sizeBytes, includeSignature ? ZIP_SIGNATURE : []);
 }
 
 function uploadPart(multipartUploadId, partNumber, data) {
   const url = retrievePresignPut(multipartUploadId, partNumber);
-  let res = http.put(url, data, {
+  const res = http.put(url, data, {
     headers: {
       'Content-Type': 'application/octet-stream',
-    }
+    },
   });
 
-  let ok = check(res, { "status is 200": (res) => res.status === 200 });
-  if (!ok) {
-    failWithLog('uploadPart', `partNumber=${partNumber}`, res);
-  }
+  assertResponse(res, { 'status is 200': (response) => response.status === 200 }, 'uploadPart', `partNumber=${partNumber}`);
 
-  let etag = res.headers && (res.headers.ETag || res.headers.etag || res.headers.Etag);
+  const etag = res.headers && (res.headers.ETag || res.headers.etag || res.headers.Etag);
 
   if (!etag) {
-    failWithLog('uploadPart', `empty etag`, res);
+    failWithLog('uploadPart', 'empty etag', res);
   }
 
   return etag;
@@ -149,31 +119,22 @@ function completeUpload(uploadId, etags) {
   const requestName = 'completeUpload';
   const parts = etags.map((etag, index) => ({
     partNumber: index + 1,
-    etag: etag,
+    etag,
   }));
 
   const res = http.post(
-    `${base_url}/v1/uploads/${uploadId}/complete`,
+    `${baseUrl}/v1/uploads/${uploadId}/complete`,
     JSON.stringify({ parts }),
     {
       headers: {
+        ...authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token,
       },
-    }
+    },
   );
 
-  const ok = check(res, { "status is 200": (r) => r.status === 200 });
-  if (!ok) {
-    failWithLog(requestName, 'invalid status', res);
-  }
-
-  let body;
-  try {
-    body = JSON.parse(res.body);
-  } catch (e) {
-    failWithLog(requestName, 'invalid JSON', res);
-  }
+  assertResponse(res, { 'status is 200': (response) => response.status === 200 }, requestName);
+  const body = parseJsonBody(res, requestName);
 
   const fileId = body?.fileId;
   if (!fileId) {
@@ -181,42 +142,4 @@ function completeUpload(uploadId, etags) {
   }
 
   return fileId;
-}
-
-function deleteFile(fileId) {
-  const requestName = 'deleteFile';
-
-  const res = http.del(
-    `${base_url}/v1/files/${fileId}`,
-    null,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  const ok = check(res, {
-    'status is 200 or 204': (r) => r.status === 200 || r.status === 204,
-  });
-
-  if (!ok) {
-    failWithLog(requestName, `fileId=${fileId}`, res);
-  }
-}
-
-function failWithLog(name, details, res) {
-  const responseInfo = formatResponseInfo(res);
-  const suffix = responseInfo ? `, ${responseInfo}` : '';
-  console.error(`${name} failed: ${details}${suffix}`);
-  fail(`${name} response assertion failed`);
-}
-
-function formatResponseInfo(res) {
-  if (!res) return '';
-  const status = res.status ?? 'unknown';
-  const url = res.url ?? res.request?.url ?? '';
-  const headers = res.headers ? JSON.stringify(res.headers) : 'null';
-  const body = res.body ?? '';
-  return `response={status=${status}, url=${url}, headers=${headers}, body=${body}}`;
 }
