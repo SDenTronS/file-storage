@@ -8,10 +8,10 @@ import dev.dentron.filestorage.application.port.out.ObjectStoragePort.ObjectMeta
 import dev.dentron.filestorage.application.port.out.ObjectStoragePort.StorageObject;
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
 import dev.dentron.filestorage.application.outbox.OutboxEventType;
-import dev.dentron.filestorage.application.port.out.outbox.OutboxFailMarker;
 import dev.dentron.filestorage.application.outbox.OutboxMessage;
 import dev.dentron.filestorage.application.outbox.payload.FileDeletedPayload;
 import dev.dentron.filestorage.application.outbox.payload.FileUploadedPayload;
+import dev.dentron.filestorage.application.port.out.outbox.OutboxPort;
 import dev.dentron.filestorage.common.util.ExceptionUtils;
 import dev.dentron.filestorage.domain.FileObject;
 import dev.dentron.filestorage.domain.UploadSession;
@@ -47,7 +47,7 @@ public class OutboxListener {
     private final PersistenceService persistenceService;
     private final UploadSessionRepository sessionRepository;
     private final FileObjectRepository fileRepository;
-    private final OutboxFailMarker failMarker;
+    private final OutboxPort outboxPort;
     private final Tika tika;
     private final ObjectMapper mapper;
     private final ExecutorService executor;
@@ -101,10 +101,9 @@ public class OutboxListener {
     )
     public void listenDlt(@Payload List<OutboxMessage> messages) {
         List<UUID> ids = messages.stream().map(OutboxMessage::eventId).toList();
-        failMarker.markFailed(ids);
+        outboxPort.markFailed(ids);
     }
 
-    //TODO reduce blocking ops
     private void handleFileUploaded(OutboxMessage message, String key) {
         FileUploadedPayload payload = mapper.readValue(message.payloadJson(), FileUploadedPayload.class);
 

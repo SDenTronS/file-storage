@@ -10,7 +10,7 @@ import dev.dentron.filestorage.application.port.out.ObjectStoragePort;
 import dev.dentron.filestorage.application.port.out.ObjectStoragePort.ObjectMetadata;
 import dev.dentron.filestorage.application.port.out.ObjectStoragePort.StorageObject;
 import dev.dentron.filestorage.application.port.out.UploadSessionRepository;
-import dev.dentron.filestorage.application.port.out.outbox.OutboxFailMarker;
+import dev.dentron.filestorage.application.port.out.outbox.OutboxPort;
 import dev.dentron.filestorage.application.service.PersistenceService;
 import dev.dentron.filestorage.domain.UploadSession;
 import dev.dentron.worker.outbox.OutboxListener;
@@ -50,7 +50,7 @@ public class OutboxListenerTest {
     @Mock private PersistenceService persistenceService;
     @Mock private UploadSessionRepository sessionRepository;
     @Mock private FileObjectRepository fileRepository;
-    @Mock private OutboxFailMarker failMarker;
+    @Mock private OutboxPort outboxPort;
     @Mock private ObjectMapper mapper;
     @Mock private Tika tika;
     @Spy private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -168,7 +168,7 @@ public class OutboxListenerTest {
 
         listener.listenDlt(messages);
 
-        verify(failMarker).markFailed(List.of(first, second));
+        verify(outboxPort).markFailed(List.of(first, second));
     }
 
     private void stubFileUploadedPayload(String payloadJson, UUID fileId) {

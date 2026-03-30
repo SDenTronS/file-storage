@@ -12,6 +12,12 @@ public interface OutboxPort {
 
     List<OutboxMessage> claimBatch(int limit);
 
+    void completeBatch(List<UUID> publishedMessages, List<UUID> failedMessages, List<UUID> retryableMessages, Instant publishedAt);
+
     void markPublished(List<UUID> messages, Instant publishedAt);
+
+    void markFailed(List<UUID> messages);
+
+    void unclaim(List<UUID> messages);
 
 }

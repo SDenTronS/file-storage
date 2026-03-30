@@ -2,7 +2,6 @@ package dev.dentron.filestorage.persistence.adapter;
 
 import dev.dentron.filestorage.application.outbox.OutboxMessage;
 import dev.dentron.filestorage.application.outbox.OutboxStatus;
-import dev.dentron.filestorage.application.port.out.outbox.OutboxFailMarker;
 import dev.dentron.filestorage.application.port.out.outbox.OutboxPort;
 import dev.dentron.filestorage.persistence.jpa.repository.OutboxEventJpaRepository;
 import dev.dentron.filestorage.persistence.mapper.OutboxEventMapper;
@@ -16,7 +15,7 @@ import java.util.UUID;
 
 @RequiredArgsConstructor
 @Repository
-public class OutboxPersistenceAdapter implements OutboxPort, OutboxFailMarker {
+public class OutboxPersistenceAdapter implements OutboxPort {
     private final OutboxEventJpaRepository repository;
     private final OutboxEventMapper mapper;
 
@@ -36,6 +35,25 @@ public class OutboxPersistenceAdapter implements OutboxPort, OutboxFailMarker {
 
     @Override
     @Transactional
+    public void completeBatch(List<UUID> publishedMessages,
+                              List<UUID> failedMessages,
+                              List<UUID> retryableMessages,
+                              Instant publishedAt) {
+        if (!failedMessages.isEmpty()) {
+            repository.updateStatus(failedMessages, OutboxStatus.FAILED);
+        }
+
+        if (!publishedMessages.isEmpty()) {
+            repository.markPublished(publishedMessages, publishedAt);
+        }
+
+        if (!retryableMessages.isEmpty()) {
+            repository.updateStatus(retryableMessages, OutboxStatus.NEW);
+        }
+    }
+
+    @Override
+    @Transactional
     public void markPublished(List<UUID> messages, Instant publishedAt) {
         if (messages.isEmpty()) {
             return;
@@ -45,6 +63,7 @@ public class OutboxPersistenceAdapter implements OutboxPort, OutboxFailMarker {
     }
 
     @Override
+    @Transactional
     public void markFailed(List<UUID> messages) {
         if (messages.isEmpty()) {
             return;
@@ -54,7 +73,13 @@ public class OutboxPersistenceAdapter implements OutboxPort, OutboxFailMarker {
     }
 
     @Override
-    public void markFailed(UUID id) {
+    @Transactional
+    public void unclaim(List<UUID> messages) {
+        if (messages.isEmpty()) {
+            return;
+        }
 
+        repository.updateStatus(messages, OutboxStatus.NEW);
     }
+
 }
