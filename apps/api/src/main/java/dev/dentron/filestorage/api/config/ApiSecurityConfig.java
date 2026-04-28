@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -24,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 public class ApiSecurityConfig {
     @Bean
+    @Primary
     public JwtAuthenticationFilter jwtAuthenticationFilter(
             JwtTokenVerifier jwtTokenVerifier,
             @Value("${app.name:file-storage}") String thisServiceName
@@ -32,6 +34,7 @@ public class ApiSecurityConfig {
     }
 
     @Bean
+    @Primary
     public JwtTokenVerifier tokenVerifier(@Value("${API_JWT_PUBLIC_KEY:${jwt.public-key:}}") String publicKey) {
         if (publicKey == null || publicKey.isBlank()) {
             throw new IllegalStateException("JWT public key is not configured. Set API_JWT_PUBLIC_KEY env variable.");
